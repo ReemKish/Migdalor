@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import Insightx from './pages/Insightx'
 import Verifyx from './pages/Verifyx'
 import VerifyxStaff from './pages/VerifyxStaff'
+import VerifyxAuth from './pages/VerifyxAuth'
 
 export default function App() {
   const location = useLocation()
@@ -16,6 +17,7 @@ export default function App() {
           <h1>Skillx Template</h1>
           <nav>
             <Link to="/insightx" style={{ marginRight: 10 }}>Insightx</Link>
+            <Link to="/verifyx-auth" style={{ marginRight: 10 }}>Verifyx Auth</Link>
             <Link to="/verifyx" style={{ marginRight: 10 }}>Verifyx</Link>
             <Link to="/verifyx-staff">Verifyx Staff</Link>
           </nav>
@@ -25,9 +27,13 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/insightx" element={<Insightx />} />
+          <Route path="/verifyx-auth" element={<VerifyxAuth />} />
           <Route path="/verifyx" element={<Verifyx />} />
           <Route path="/verifyx-staff" element={<VerifyxStaff />} />
-          <Route path="/" element={<div>Welcome — open /insightx, /verifyx, or /verifyx-staff</div>} />
+          <Route
+            path="/"
+            element={<div>Welcome — open /insightx, /verifyx-auth, /verifyx, or /verifyx-staff</div>}
+          />
         </Routes>
       </main>
     </div>
