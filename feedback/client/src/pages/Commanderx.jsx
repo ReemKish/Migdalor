@@ -76,16 +76,57 @@ export default function Commanderx() {
 
   
 
-  function submitNewExperience() {
+  async function generateAISummary(entries) {
+    if (!entries || entries.length === 0) return ''
+    
+    const apiKey = "AIzaSyClaox7mXlRPKi-8tNiQ7pK4WrbDfPIdmc"
+    const contentExample = `
+Here is a list of positive and improvement notes given by cadets for a cadet for a few assignments.
+
+In 1-2 hebrew sentences, analyze trends for
+1)what has improved/kept at high level.
+2) what has worsen/hadn't improved.
+3) suggest a way for improvement/ "what should i do"
+5) answer in a clear and not too high level language.
+4) respond only with the sentences, no additional text.
+${entries.map(e => `{ "text": "${(e.text||'').replace(/\n/g,' ')}", "tag": "${(e.tag||'').replace(/\n/g,' ')}" }`).join(',\n')}
+`
+
+    try {
+      const mod = await import('@google/genai')
+      const GoogleGenAI = mod && (mod.GoogleGenAI || mod.default?.GoogleGenAI || mod.default || mod)
+      if (!GoogleGenAI) throw new Error('GoogleGenAI SDK not found in module exports')
+      const ai = new GoogleGenAI({ apiKey })
+      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: contentExample })
+      const text = response?.text || (response && JSON.stringify(response))
+      return text || ''
+    } catch (error) {
+      console.error('Error generating AI summary:', error)
+      return ''
+    }
+  }
+
+  async function submitNewExperience() {
     const nameTrim = (name || '').trim() || ''
     const newExpTemplate = { name: nameTrim || '' }
 
     // Build feedback object based on form
     if (feedbackType === 'cadet') {
+      const entries = [
+        ...generated.preservation.map(g => ({ text: g.text, tag: g.tag })),
+        ...generated.improvement.map(g => ({ text: g.text, tag: g.tag }))
+      ]
+      
       newExpTemplate.cadetFeedback = {
         preservation: generated.preservation.map(g => ({ text: g.text, tag: g.tag })),
         improvement: generated.improvement.map(g => ({ text: g.text, tag: g.tag })),
         generalSummary: ''
+      }
+      
+      // Generate AI summary for cadet feedback
+      const aiSummary = await generateAISummary(entries)
+      if (aiSummary) {
+        newExpTemplate.Aisummary = aiSummary
       }
     } else {
       newExpTemplate.commanderFeedback = {
@@ -120,6 +161,12 @@ export default function Commanderx() {
     })
   }
 
+  function handleDeleteExperience(id) {
+    if (window.confirm('האם אתה בטוח שברצונך למחוק את ההתנסות?')) {
+      store.deleteExperienceById(id)
+    }
+  }
+
   return (
     <Box dir="rtl" component="section" sx={{ width: '100%', minHeight: '100vh', px: 0, py: 6, bgcolor: '#f6f7fb' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -130,7 +177,7 @@ export default function Commanderx() {
       <Grid container spacing={4} direction="column" alignItems="center" sx={{ mt: 2 }}>
         {experiences.map(exp => (
           <Grid item xs={12} key={exp.id} sx={{ width: '100%' }}>
-            <ExperienceDetails exp={exp} />
+            <ExperienceDetails exp={exp} onDelete={handleDeleteExperience} />
           </Grid>
         ))}
       </Grid>

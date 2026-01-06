@@ -72,6 +72,10 @@ export function addOrMergeExperienceByName(exp) {
         }
       }
     }
+    // merge Aisummary - if new one is provided, replace the old one
+    if (exp.Aisummary !== undefined && exp.Aisummary !== null) {
+      existing.Aisummary = exp.Aisummary
+    }
     copy[idx] = existing
     experiences = copy
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(experiences)) } catch (e) {}
@@ -87,6 +91,15 @@ export function addOrMergeExperienceByName(exp) {
   notify()
 }
 
+export function deleteExperienceById(id) {
+  const idx = experiences.findIndex(e => e.id === id)
+  if (idx !== -1) {
+    experiences = experiences.filter(e => e.id !== id)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(experiences)) } catch (e) {}
+    notify()
+  }
+}
+
 export function exportExperiencesJSON() {
   return JSON.stringify(experiences, null, 2)
 }
@@ -96,5 +109,6 @@ export default {
   setExperiences,
   subscribe,
   addOrMergeExperienceByName,
+  deleteExperienceById,
   exportExperiencesJSON
 }

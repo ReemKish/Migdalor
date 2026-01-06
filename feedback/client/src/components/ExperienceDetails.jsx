@@ -1,53 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import Box from '@mui/material/Box'
 import Grid from '@mui/material/Grid'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
-import { GoogleGenAI } from "@google/genai";
+import IconButton from '@mui/material/IconButton'
 
 // Renders cadet & commander feedback for an experience
-export default function ExperienceDetails({ exp }) {
-  // Simple simulated AI summaries by concatenating key phrases
-  // AI summary: try calling Google GenAI with a hard-coded key; fall back to simple tag summary
-  const [aiSummary, setAiSummary] = useState('')
-
-  useEffect(() => {
-    if (!exp.cadetFeedback) { setAiSummary(''); return }
-
-    const apiKey = "AIzaSyClaox7mXlRPKi-8tNiQ7pK4WrbDfPIdmc"
-
-    // Build contents from cadet feedback entries
-    const entries = [
-      ...(exp.cadetFeedback.preservation || []),
-      ...(exp.cadetFeedback.improvement || [])
-    ]
-
-    const contentExample = `
-Here is a list of positive and improvement notes given by cadets for a cadet for a few assignments.
-
-In 1-2 hebrew sentences, analyze trends for
-1)what has improved/kept at high level.
-2) what has worsen/hadn’t improved.
-3) suggest a way for improvement/ "what should i do"
-5) answer in a clear and not too high level language.
-4) respond only with the sentences, no additional text.
-${entries.map(e => `{ "text": "${(e.text||'').replace(/\n/g,' ')}", "tag": "${(e.tag||'').replace(/\n/g,' ')}" }`).join(',\n')}
-`
-
-    async function getAi() {
-      // Direct dynamic import of the installed SDK; let errors propagate so you can see them
-      const mod = await import('@google/genai')
-      const GoogleGenAI = mod && (mod.GoogleGenAI || mod.default?.GoogleGenAI || mod.default || mod)
-      if (!GoogleGenAI) throw new Error('GoogleGenAI SDK not found in module exports')
-      const ai = new GoogleGenAI({ apiKey })
-      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: contentExample })
-      const text = response?.text || (response && JSON.stringify(response))
-      setAiSummary(text)
-    }
-
-    getAi()
-  }, [exp.cadetFeedback])
+export default function ExperienceDetails({ exp, onDelete }) {
+  // Read AI summary from exp.Aisummary instead of generating it
+  const aiSummary = exp.Aisummary || ''
 
   // For commander, use their overallSummary as the commander-written summary
   const commanderSummary = exp.commanderFeedback && exp.commanderFeedback.overallSummary
@@ -57,7 +19,21 @@ ${entries.map(e => `{ "text": "${(e.text||'').replace(/\n/g,' ')}", "tag": "${(e
   return (
     <Paper elevation={3} sx={{ display: 'flex', flexDirection: 'column', p: 3, bgcolor: '#ffffff', width: '100%', boxSizing: 'border-box', minHeight: 'calc(100vh - 48px)' }}>
       <Box sx={{ width: '100%', maxWidth: 900, mx: 'auto' }}>
-        <Typography variant="h5" align="right" sx={{ fontWeight: 700 }}>{exp.name}</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5" align="right" sx={{ fontWeight: 700 }}>{exp.name}</Typography>
+          {onDelete && (
+            <IconButton 
+              onClick={() => onDelete(exp.id)} 
+              color="error" 
+              aria-label="מחק התנסות"
+              sx={{ ml: 2 }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+              </svg>
+            </IconButton>
+          )}
+        </Box>
 
       {/* Cadet feedback */}
       {exp.cadetFeedback && (
