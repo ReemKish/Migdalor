@@ -1,25 +1,26 @@
 {
-  "name": "migdalor",
+  "name": "alon-simulations-app",
+  "private": true,
   "version": "1.0.0",
-  "description": "Migdalor",
-  "homepage": "https://github.com/ReemKish/Migdalor#readme",
-  "bugs": {
-    "url": "https://github.com/ReemKish/Migdalor/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ReemKish/Migdalor.git"
-  },
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/material": "^7.3.6"
+    "clsx": "^2.0.0",
+    "lucide-react": "^0.284.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-select": "^5.10.2",
+    "tailwind-merge": "^1.14.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.3",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.27",
+    "tailwindcss": "^3.3.3",
+    "vite": "^4.4.5"
   }
 }
