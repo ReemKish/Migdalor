@@ -12,6 +12,8 @@ export default function LoginPage() {
       // If the user is signed in, redirect them to a protected page (e.g., '/dashboard')
       if (event === 'SIGNED_IN' && session) {
         navigate('/home');
+      } if (event === 'SIGNED_OUT' && session) {
+        navigate('/login')
       }
     });
 
