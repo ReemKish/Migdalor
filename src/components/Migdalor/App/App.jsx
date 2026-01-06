@@ -6,8 +6,5 @@ import Pages from '../../../pages'
 
 import './App.css';
 export default () => {
-
-  return (
-    <Pages />
-  )
+  return (<Pages />)
 }
