@@ -4,7 +4,7 @@
 
 import Pages from '../../../pages'
 
-import './App.css'
+import './App.css';
 export default () => {
 
   return (
