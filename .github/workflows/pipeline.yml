@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------
+      # 🛑 GUARDRAIL STEP: "Loud Fail"
+      # Only runs on 'push' events. PRs are allowed to run tests safely.
+      # -----------------------------------------------------------------
+      - name: Check Push Permissions
+        if: ${{ github.event_name == 'push' && !contains(fromJson('["ReemKish", "eyalhagi12"]'), github.actor) }}
+        run: |
+          echo "::error::⛔ PERMISSION DENIED: User '${{ github.actor }}' is not authorized to push directly to main."
+          echo "Only specific users are allowed to trigger builds on main."
+          exit 1
+      # -----------------------------------------------------------------
+
+      - uses: actions/checkout@v4
