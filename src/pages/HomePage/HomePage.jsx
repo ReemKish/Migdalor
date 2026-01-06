@@ -13,6 +13,7 @@ import {
     Database,
     Key,
     Lightbulb,
+    Notebook,
     Settings,
     Sparkles
 } from 'lucide-react';
@@ -51,27 +52,35 @@ export default function Home() {
         {
             title: 'ניהול כיתות',
             description: 'ניהול מפתחות, הקצאת חדרים ולוח זמנים',
-            icon: Key,
-            path: '/dashboard',
+            icon: Lightbulb,
+            path: '/Dashboard',
             color: '#6366f1',
             available: true
         },
         {
-            title: 'HackAlon',
-            description: 'ניהול האקאלון, מחזור 2',
-            icon: Lightbulb,
-            path: '/hackalon',
-            color: '#3b82f6',
+            title: 'הקצאת מפתחות',
+            description: 'מקום להקצות מפתחות בצורה מסודרת',
+            icon: Key,
+            path: '/AllocateKeys',
+            color: '#3bf660ff',
             available: true
         },
         {
-            title: 'המוצר שלכם יהיה ממש כאן!',
-            description: 'וכאן התיאור שלו...',
-            icon: Sparkles,
-            path: null,
-            color: '#a855f7',
-            available: false
-        }
+            title: 'ניהול כללי של מפתחות',
+            description: 'מקום לעקוב אחר מפתחות',
+            icon: Key,
+            path: '/ManageKeys',
+            color: '#f3f63bff',
+            available: true
+        },
+        {
+            title: 'לו"ז',
+            description: 'מה הלו"ז?',
+            icon: Notebook,
+            path: '/Schedule',
+            color: '#f63b3bff',
+            available: true
+        },
     ];
 
     const adminFeatures = [
