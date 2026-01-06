@@ -16,16 +16,36 @@ import {
     Settings,
     Sparkles
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import { supabase } from '../../../lib/supabaseClient';
 
 export default function Home() {
-    // Mock user data
-    const user = {
-        full_name: 'משתמש',
-        role: 'admin'
-    };
+    const [user, setUser] = useState(null);
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error) {
+                console.error('Error fetching user:', error);
+                return;
+            }
+            const { data, error2 } = await supabase
+                .from('users')
+                .select('full_name, site_role')
+                .eq('id', user.id)
+                .single();
+            if (error2) {
+                console.error('Error fetching user data:', error);
+            } else {
+                setUser(data);
+            }
+        }
+        fetchUser();
+    }, []);
 
-    const isAdmin = user?.role === 'admin';
+    if (user === null) return <p> Loading... </p>
+
+    const isAdmin = user?.site_role === 'admin';
 
     const features = [
         {

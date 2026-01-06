@@ -13,7 +13,7 @@ export default function LoginPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       // If the user is signed in, redirect them to a protected page (e.g., '/dashboard')
       if (event === 'SIGNED_IN' && session) {
-        navigate('/dashboard');
+        navigate('/home');
       }
     });
 
