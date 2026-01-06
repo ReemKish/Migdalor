@@ -1,0 +1,5 @@
+{
+  "name": "IDF Doctrine AI Quiz",
+  "description": "An interactive quiz application for Israeli Defense Forces (IDF) doctrine, featuring open-ended questions and AI-powered grading using the Gemini API. Users can select from various tests, answer questions, and receive detailed feedback and scores based on official source texts.",
+  "requestFramePermissions": []
+}
