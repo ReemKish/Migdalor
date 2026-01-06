@@ -1,0 +1,20 @@
+{
+  "name": "skillx",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "cd client && npm run dev",
+    "install:client": "cd client && npm install",
+    "build:client": "cd client && npm run build",
+    "preview:client": "cd client && npm run preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.6",
+    "@mui/material": "^7.3.6"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
