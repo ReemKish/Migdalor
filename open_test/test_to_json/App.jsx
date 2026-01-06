@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { FileUp, FileJson, Download, BookOpen, Database, AlertCircle, CheckCircle, BrainCircuit, Image as ImageIcon, Shield, Target, MousePointer, Trash2, Edit3, Save } from 'lucide-react';
+import { FileUp, FileJson, Download, BookOpen, Database, AlertCircle, CheckCircle, BrainCircuit, Image as ImageIcon, Shield, Target, MousePointer, Trash2, Edit3, Save, CloudUpload, Settings } from 'lucide-react';
 
-// API Key updated
-const DEFAULT_API_KEY = "";
+// API Keys & Configuration
+const DEFAULT_API_KEY = "AIzaSyAnaVU4yUwnzKAg04q1aOnA8CMR4wKziks";
+const SUPABASE_URL = "https://stxeyhqnikhkdfuaxfxc.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_xDr7SOAxBPly03gR_sc6Fw_4Tvj_hQW";
+const SUPABASE_TABLE = "Tests questions"; 
 
-// PDF.js constants
+// External Library URLs (CDN)
 const PDF_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDF_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const SUPABASE_JS_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm'; // Using ESM for dynamic import if possible, but fallback to global for safety in this env
 
 export default function App() {
+  // Configuration State
   const [apiKey, setApiKey] = useState(DEFAULT_API_KEY);
+  const [supabaseKey, setSupabaseKey] = useState(DEFAULT_SUPABASE_KEY);
+  const [showSettings, setShowSettings] = useState(false);
   
   // User Configuration State
   const [examName, setExamName] = useState("מבחן מסכם");
@@ -27,6 +34,10 @@ export default function App() {
   const [generatedJson, setGeneratedJson] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [pdfLibReady, setPdfLibReady] = useState(false);
+  const [supabaseReady, setSupabaseReady] = useState(false);
+
+  // Upload State
+  const [uploadStatus, setUploadStatus] = useState("idle"); // idle, uploading, success, error
 
   // Constants for UI selections
   const ICONS = [
@@ -63,6 +74,30 @@ export default function App() {
     };
 
     loadPdfJs();
+  }, []);
+
+  // Load Supabase dynamically via script tag to avoid build errors
+  useEffect(() => {
+    const loadSupabase = () => {
+      if (window.supabase) {
+        setSupabaseReady(true);
+        return;
+      }
+
+      const script = document.createElement('script');
+      // Using the UMD build for global access
+      script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";
+      script.onload = () => {
+        setSupabaseReady(true);
+      };
+      script.onerror = () => {
+        console.error("Failed to load Supabase SDK");
+        setErrorMsg("שגיאה בטעינת ספריית Supabase");
+      };
+      document.body.appendChild(script);
+    };
+
+    loadSupabase();
   }, []);
 
   // Extract Text (For Reference Books)
@@ -156,6 +191,7 @@ export default function App() {
 
     setStatus("processing");
     setErrorMsg("");
+    setUploadStatus("idle");
     setProgressMsg("מעבד שאלות...");
 
     try {
@@ -258,6 +294,43 @@ export default function App() {
     }
   };
 
+  const handleUploadToSupabase = async () => {
+    if (!generatedJson) return;
+    if (!window.supabase) {
+        setErrorMsg("ספריית Supabase לא נטענה בהצלחה.");
+        return;
+    }
+
+    setUploadStatus("uploading");
+    
+    try {
+      // Access Supabase from global window object
+      const { createClient } = window.supabase;
+      const client = createClient(SUPABASE_URL, supabaseKey);
+      
+      const payload = {
+        name: generatedJson.name,
+        icon: generatedJson.icon,
+        color: generatedJson.color,
+        questions: generatedJson.questions
+      };
+
+      const { error } = await client
+        .from(SUPABASE_TABLE)
+        .insert([payload]);
+
+      if (error) throw error;
+
+      setUploadStatus("success");
+      setTimeout(() => setUploadStatus("idle"), 3000); // Reset after 3 seconds
+
+    } catch (err) {
+      console.error("Supabase Error:", err);
+      setUploadStatus("error");
+      setErrorMsg("שגיאה בהעלאה: " + (err.message || "שגיאה לא ידועה"));
+    }
+  };
+
   // --- Update Handlers ---
 
   const handleDeleteQuestion = (indexToDelete) => {
@@ -314,23 +387,49 @@ export default function App() {
             </h1>
             <p className="opacity-80 mt-1">המרה חכמה לשאלות פתוחות (OCR) + עורך</p>
           </div>
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            title="הגדרות API"
+          >
+            <Settings size={24} />
+          </button>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto mt-8 px-4">
         
-        {/* API Key */}
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
-          <label className="block text-sm font-semibold text-gray-700 mb-1">Gemini API Key</label>
-          <input 
-            type="password" 
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="הזן כאן את מפתח ה-API שלך"
-            className="w-full p-2 border rounded bg-gray-50 font-mono text-sm focus:ring-2 focus:ring-green-500 outline-none"
-          />
-          {!apiKey && <p className="text-red-500 text-xs mt-1">נדרש מפתח API לביצוע הפעולה.</p>}
-        </div>
+        {/* Settings Panel */}
+        {showSettings && (
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 animate-fade-in">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Settings size={18} />
+                    הגדרות מערכת
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Gemini API Key</label>
+                        <input 
+                            type="password" 
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="הזן כאן את מפתח ה-API של Gemini"
+                            className="w-full p-2 border rounded bg-gray-50 font-mono text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Supabase API Key</label>
+                        <input 
+                            type="password" 
+                            value={supabaseKey}
+                            onChange={(e) => setSupabaseKey(e.target.value)}
+                            placeholder="הזן כאן את מפתח ה-Supabase שלך"
+                            className="w-full p-2 border rounded bg-gray-50 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
 
         {!pdfLibReady && (
             <div className="bg-yellow-100 text-yellow-800 p-4 rounded mb-6 text-center">
@@ -338,7 +437,7 @@ export default function App() {
             </div>
         )}
 
-        {/* Input Sections - Only show if not complete to save space, or keep visible? Keeping visible for easy re-run */}
+        {/* Input Sections */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className={`p-6 rounded-xl border-2 transition-all ${referenceFiles.length > 0 ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300 bg-white'}`}>
             <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -558,7 +657,7 @@ export default function App() {
             </div>
             
             {/* Footer Actions */}
-            <div className="p-4 bg-gray-100 border-t flex justify-center">
+            <div className="p-4 bg-gray-100 border-t flex flex-col md:flex-row justify-center gap-4 items-center">
                 <button 
                     onClick={downloadJson}
                     className={`bg-gray-800 hover:bg-gray-900 text-white px-8 py-3 rounded-lg shadow-lg flex items-center gap-2 font-bold ${generatedJson.questions.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -566,6 +665,43 @@ export default function App() {
                 >
                     <Save size={18} />
                     שמור והורד קובץ סופי
+                </button>
+                
+                {/* Supabase Upload Button */}
+                <button 
+                    onClick={handleUploadToSupabase}
+                    disabled={generatedJson.questions.length === 0 || uploadStatus === 'uploading' || uploadStatus === 'success'}
+                    className={`px-8 py-3 rounded-lg shadow-lg flex items-center gap-2 font-bold transition-all
+                        ${uploadStatus === 'success' 
+                            ? 'bg-green-600 text-white hover:bg-green-700' 
+                            : uploadStatus === 'error'
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }
+                        ${(generatedJson.questions.length === 0 || uploadStatus === 'uploading') ? 'opacity-75 cursor-not-allowed' : ''}
+                    `}
+                >
+                    {uploadStatus === 'uploading' ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+                            מעלה...
+                        </>
+                    ) : uploadStatus === 'success' ? (
+                        <>
+                            <CheckCircle size={18} />
+                            הועלה בהצלחה!
+                        </>
+                    ) : uploadStatus === 'error' ? (
+                        <>
+                            <AlertCircle size={18} />
+                            שגיאה בהעלאה (נסה שוב)
+                        </>
+                    ) : (
+                        <>
+                            <CloudUpload size={18} />
+                            העלה לענן
+                        </>
+                    )}
                 </button>
             </div>
           </div>

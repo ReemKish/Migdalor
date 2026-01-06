@@ -7,8 +7,14 @@ import {
 import type { Question, QuizResult, Test } from './types';
 import { gradeAnswer } from './services/geminiService';
 import { DynamicIcon } from './components/Icon';
+import { createClient } from "@supabase/supabase-js";
 
 type Screen = 'welcome' | 'quiz' | 'grading' | 'summary' | 'settings';
+
+const supabaseUrl = 'https://stxeyhqnikhkdfuaxfxc.supabase.co';
+const supabaseKey = 'sb_publishable_xDr7SOAxBPly03gR_sc6Fw_4Tvj_hQW';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -25,25 +31,23 @@ const App: React.FC = () => {
   const [isAwaitingKeyForGrading, setIsAwaitingKeyForGrading] = useState(false);
 
   useEffect(() => {
-    const fetchTests = async () => {
+    const loadTestsFromSupabase = async () => {
       try {
-        const manifestResponse = await fetch('/tests/manifest.json');
-        if (!manifestResponse.ok) throw new Error(`HTTP error! status: ${manifestResponse.status}`);
-        const manifest = await manifestResponse.json();
+        setLoadingTests(true);
+        setError(null);
+        const { data, error: dbError } = await supabase
+          .from('Tests questions')
+          .select("*");
 
-        const testPromises = manifest.testFiles.map((fileName: string) =>
-          fetch(`/tests/${fileName}`).then(res => {
-            if (!res.ok) throw new Error(`Failed to load ${fileName}`);
-            return res.json();
-          })
-        );
+        if (dbError) {
+          throw new Error(dbError.message);
+        }
         
-        const loadedTests = await Promise.all(testPromises);
-        setAvailableTests(loadedTests);
+        setAvailableTests(data || []);
       } catch (e) {
-        console.error("Failed to load tests", e);
+        console.error("Failed to load tests from Supabase", e);
         if (e instanceof Error) {
-            setError(e.message);
+            setError(`שגיאה בטעינת המבחנים מהשרת: ${e.message}`);
         } else {
             setError("An unknown error occurred while loading tests.");
         }
@@ -52,7 +56,7 @@ const App: React.FC = () => {
       }
     };
 
-    fetchTests();
+    loadTestsFromSupabase();
 
     const savedApiKey = localStorage.getItem('geminiApiKey');
     if (savedApiKey) {
@@ -72,16 +76,12 @@ const App: React.FC = () => {
     localStorage.setItem('geminiApiKey', key);
   }
 
-  const startQuiz = (testId: string) => {
+  const startQuiz = (testId: number) => {
     let questionsToLoad: Question[] = [];
 
-    if (testId === 'all') {
-      questionsToLoad = availableTests.flatMap(test => test.questions);
-    } else {
-      const selectedTest = availableTests.find(test => test.id === testId);
-      if (selectedTest) {
-        questionsToLoad = selectedTest.questions;
-      }
+    const selectedTest = availableTests.find(test => test.id === testId);
+    if (selectedTest) {
+      questionsToLoad = selectedTest.questions;
     }
     
     // Shuffle questions
@@ -108,7 +108,7 @@ const App: React.FC = () => {
     if (direction === 'next' && currentQIndex < questions.length - 1) {
       setCurrentQIndex(prev => prev + 1);
     } else if (direction === 'prev' && currentQIndex > 0) {
-      setCurrentQIndex(prev => prev - 1);
+      setCurrentQIndex(prev => prev + 1);
     }
   };
 
@@ -154,7 +154,7 @@ const App: React.FC = () => {
       return (
         <div className="flex flex-col items-center justify-center h-full text-center p-6">
           <RefreshCw size={48} className="text-blue-600 animate-spin mb-4" />
-          <p className="text-gray-600 text-lg">טוען מבחנים...</p>
+          <p className="text-gray-600 text-lg">טוען מבחנים מהשרת...</p>
         </div>
       );
     }
@@ -164,7 +164,7 @@ const App: React.FC = () => {
         <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-red-50 rounded-lg border border-red-200">
            <p className="text-red-700 font-bold">שגיאה בטעינת המבחנים</p>
            <p className="text-red-600 mt-2">{error}</p>
-           <p className="text-gray-500 mt-4 text-sm">Please check the console for more details and ensure `tests/manifest.json` and the corresponding test files exist.</p>
+           <p className="text-gray-500 mt-4 text-sm">Please check the console for more details and ensure the Supabase connection is configured correctly.</p>
         </div>
       );
     }
@@ -191,12 +191,6 @@ const App: React.FC = () => {
                 <h3 className="font-bold text-gray-800">{test.name}</h3>
             </button>
         ))}
-        {availableTests.length > 1 && (
-             <button onClick={() => startQuiz('all')} className="p-6 bg-white border-2 border-green-100 hover:border-green-500 rounded-xl shadow-sm hover:shadow-md transition group md:col-span-3">
-                <Award className="w-8 h-8 text-green-600 mx-auto mb-3 group-hover:scale-110 transition" />
-                <h3 className="font-bold text-gray-800">מבחן מסכם מלא</h3>
-            </button>
-        )}
       </div>
 
        <button onClick={() => setCurrentScreen('settings')} className="text-gray-400 text-xs underline mt-2">

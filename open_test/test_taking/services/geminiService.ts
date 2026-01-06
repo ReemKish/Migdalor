@@ -16,7 +16,7 @@ const getPrompt = (question: Question, userAnswer: string): string => `
   Instructions:
   1. Analyze if the student's answer captures the core meaning of the Source Text.
   2. Return JSON with exactly these keys:
-     - "score": 0 - wrong, 1 - partialy correct, 2 - correct. Base the score on completeness, accuracy, and relevance to the source text.
+     - "score": number (0-100). Base the score on completeness, accuracy, and relevance to the source text.
      - "feedback": Hebrew string. Direct, constructive feedback to the student explaining what was right and what was wrong in their answer.
      - "correction": Hebrew string. The ideal, perfect answer, derived ONLY from the provided source text.
   
