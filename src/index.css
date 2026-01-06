@@ -1,12 +1,21 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  --primary: #52b788;
+  --primary-dark: #2d6a4f;
+  --primary-light: #81c784;
+  --secondary: #b7e4c7;
+  --accent: #d8f3dc;
+  --text-primary: #1b4332;
+  --text-secondary: #2d6a4f;
+  --bg-light: #f1faee;
+  --bg-white: #ffffff;
+  --border: rgba(82,183,136,0.1);
+  
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  color-scheme: light;
+  color: var(--text-primary);
+  
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,47 +23,45 @@
 }
 
 a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  transition: color 200ms ease;
 }
+
 a:hover {
-  color: #535bf2;
+  color: var(--primary-dark);
+  text-decoration: underline;
 }
 
 body {
   margin: 0;
   display: flex;
-  /* center the app horizontally and place it near the top vertically */
   justify-content: center;
   align-items: flex-start;
   padding-top: 32px;
   min-width: 320px;
   min-height: 100vh;
+  background: linear-gradient(180deg, #f1faee 0%, #e8f5e9 50%, #dff5dd 100%);
+  color: var(--text-primary);
 }
 
-/* Ensure the page background is visible and provide a CSS fallback gradient */
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: linear-gradient(135deg, #f6f9fc 0%, #e6eef6 50%, #dfeffb 100%) !important;
-  color: #1f2937 !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ensure the app container shows the page background and fills viewport */
 .container {
   min-height: 100vh;
   background: transparent !important;
   box-shadow: none !important;
-  padding: 24px 16px;
+  padding: 28px 20px;
   box-sizing: border-box;
-
-  /* new: center content and constrain width */
   max-width: 1100px;
   width: 100%;
-  margin: 0 auto; /* centers the container */
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -62,14 +69,12 @@ html, body, #root {
   color: inherit;
 }
 
-/* responsive tweak: allow comfortable padding on narrow screens */
 @media (max-width: 640px) {
   .container {
     padding: 20px 12px;
   }
 }
 
-/* Prevent child components from hiding the background (override white panels) */
 .container, .container * {
   background: transparent !important;
   color: inherit !important;
@@ -77,81 +82,144 @@ html, body, #root {
   visibility: visible !important;
 }
 
-/* Small UI tweaks so controls remain readable */
 button, input, textarea, select, label {
-  color: inherit !important;
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(0,0,0,0.08) !important;
-  border-radius: 6px;
+  color: var(--text-primary) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(241,250,238,0.95)) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(82,183,136,0.06);
 }
 
-/* HR and spacing */
 hr {
   border: none;
   height: 1px;
-  background: rgba(0,0,0,0.06);
+  background: var(--border);
   margin: 16px 0;
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  margin-bottom: 0.4em;
+}
+
+h2 {
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+  margin-bottom: 0.5em;
+}
+
+h3 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+h4 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+h5, h6 {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 button {
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+  padding: 10px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: all 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 6px 18px rgba(82,183,136,0.12);
   outline: none;
 }
+
 button:hover {
-  border-color: #646cff;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(82,183,136,0.2);
 }
+
+button:active {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(82,183,136,0.15);
+}
+
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  box-shadow: 0 0 0 6px rgba(82,183,136,0.12);
+}
+
+.auth-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(241,250,238,0.95));
+  padding: 20px;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(45,106,79,0.06);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .auth-panel {
   margin-top: 18px;
-  background: rgba(255,255,255,0.02);
-  padding: 14px;
-  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(250,255,250,0.9));
+  padding: 18px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(45,106,79,0.06);
 }
 
 .poll-card {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(0,0,0,0.06);
-  padding: 10px;
-  border-radius: 8px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(45,106,79,0.04);
 }
 
 .question textarea {
   width: 100%;
   min-height: 80px;
-  padding: 8px;
-  border-radius: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 0.95rem;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.section-title {
+  display: inline-block;
+  background: linear-gradient(90deg, rgba(82,183,136,0.12), rgba(159,230,180,0.08));
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+* {
+  scroll-behavior: smooth;
+}
+
+input:focus, 
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 4px rgba(82,183,136,0.12) !important;
 }

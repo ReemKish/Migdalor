@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import Divider from '@mui/material/Divider';
 import PollList from './PollList';
 
 const Dashboard = ({ user, polls = [], onOpenAnswer, onViewAnswers, getUserAnswerForPoll }) => {
-  const [view, setView] = useState('pending'); // 'pending', 'completed', or 'created'
+  const [view, setView] = useState('pending'); // 'pending' or 'completed'
+
+  // Separate polls into available (not answered) and completed (answered)
+  const availablePolls = polls.filter(p => !getUserAnswerForPoll(p.id, user?.name));
+  const completedPolls = polls.filter(p => getUserAnswerForPoll(p.id, user?.name));
 
   return (
     <Box>
@@ -13,35 +18,44 @@ const Dashboard = ({ user, polls = [], onOpenAnswer, onViewAnswers, getUserAnswe
 
       <div className="tabs">
         <button onClick={() => setView('pending')}>Polls to Fill</button>
-        <button onClick={() => setView('completed')}>History</button>
-        <button onClick={() => setView('created')}>My Published Polls</button>
+        <button onClick={() => setView('completed')}>Completed Polls</button>
       </div>
 
       <hr />
 
       {view === 'pending' && (
         <section>
-          <Typography variant="h6">Pending Polls</Typography>
-          <PollList
-            polls={polls}
-            user={user}
-            onOpenAnswer={onOpenAnswer}
-            onViewAnswers={onViewAnswers}
-            getUserAnswerForPoll={getUserAnswerForPoll}
-          />
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700 }}>Available Polls ({availablePolls.length})</Typography>
+            {availablePolls.length === 0 ? (
+              <Typography variant="body2" color="textSecondary">No pending polls at the moment.</Typography>
+            ) : (
+              <PollList
+                polls={availablePolls}
+                user={user}
+                onOpenAnswer={onOpenAnswer}
+                onViewAnswers={onViewAnswers}
+                getUserAnswerForPoll={getUserAnswerForPoll}
+              />
+            )}
+          </Box>
         </section>
       )}
 
-      {view === 'created' && (
+      {view === 'completed' && (
         <section>
-          <Typography variant="h6">Assign New Poll</Typography>
-          <button className="btn-primary">+ Create New Poll</button>
-          
-          <Typography variant="h6">Polls You Published</Typography>
-          <div className="poll-item">
-            <p>Equipment Check (Sent to Platoon A)</p>
-            <button>View Responses (CSV)</button>
-          </div>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700 }}>Completed Polls ({completedPolls.length})</Typography>
+          {completedPolls.length === 0 ? (
+            <Typography variant="body2" color="textSecondary">You haven't completed any polls yet.</Typography>
+          ) : (
+            <PollList
+              polls={completedPolls}
+              user={user}
+              onOpenAnswer={onOpenAnswer}
+              onViewAnswers={onViewAnswers}
+              getUserAnswerForPoll={getUserAnswerForPoll}
+            />
+          )}
         </section>
       )}
     </Box>

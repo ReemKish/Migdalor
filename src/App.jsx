@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Signup from './components/Signup';
 import GroupManagement from './components/GroupManagement';
 import AdminPanel from './components/AdminPanel';
+import Dashboard from './components/Dashboard';
 import Navbar from './components/Navbar';
 import PollEditor from './components/PollEditor';
 import PollList from './components/PollList';
@@ -505,16 +506,16 @@ function App() {
             <Divider sx={{ my: 2 }} />
             {/** Quick login and registered users */}
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
-              <Box sx={{ width: '100%', maxWidth: 640, mt: 2 }}>
-                <Typography variant="h6" gutterBottom>Quick login by name</Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ width: '100%', maxWidth: 640, mt: 2, textAlign: 'center' }}>
+                <Typography variant="h5" gutterBottom sx={{ fontWeight: 700, fontSize: '1.6rem' }}>Quick login by name</Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column', alignItems: 'center' }}>
                   <input
                     placeholder="Enter name..."
                     value={loginName}
                     onChange={(e) => setLoginName(e.target.value)}
-                    style={{ flex: 1, padding: 10, borderRadius: 6, border: '1px solid rgba(0,0,0,0.08)', background: 'transparent' }}
+                    style={{ width: '100%', maxWidth: '400px', padding: '14px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)', background: 'transparent', fontSize: '1.05rem', textAlign: 'center' }}
                   />
-                  <Button variant="outlined" onClick={() => { const r = loginByName(loginName); if (r?.error) alert(r.error); }}>Login</Button>
+                  <Button variant="outlined" onClick={() => { const r = loginByName(loginName); if (r?.error) alert(r.error); }} sx={{ width: '100%', maxWidth: '400px', fontSize: '1rem', padding: '12px 24px' }}>Login</Button>
                 </Box>
 
                 {/* <Box sx={{ mt: 2 }}>
@@ -573,6 +574,7 @@ function App() {
                     onDelete={(id) => deletePoll(id)}
                     onOpenAnswer={(id) => handleOpenAnswer(id)}
                     getUserAnswerForPoll={getUserAnswerForPoll}
+                    answers={answers}
                   />
                 </Box>
               ) : (
@@ -582,16 +584,13 @@ function App() {
                 </Box>
               )
             ) : (
-              <Box>
-                <Typography variant="h4" gutterBottom>Available Polls</Typography>
-                <PollList
-                  polls={getPollsForUser(user)}
-                  user={user}
-                  onOpenAnswer={(id) => handleOpenAnswer(id)}
-                  onViewAnswers={(id) => setActivePollAnswersView(id)}
-                  getUserAnswerForPoll={getUserAnswerForPoll}
-                />
-              </Box>
+              <Dashboard
+                user={user}
+                polls={getPollsForUser(user)}
+                onOpenAnswer={(id) => handleOpenAnswer(id)}
+                onViewAnswers={(id) => setActivePollAnswersView(id)}
+                getUserAnswerForPoll={getUserAnswerForPoll}
+              />
             )}
           </Box>
         )}
