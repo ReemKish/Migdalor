@@ -1,24 +1,22 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
+    AppBar,
+    Box,
     Card,
     CardContent,
-    Button,
-    Box,
-    Typography,
     Container,
     Grid,
-    AppBar,
-    Toolbar
+    Toolbar,
+    Typography
 } from '@mui/material';
+import { motion } from 'framer-motion';
 import {
+    Database,
     Key,
     Lightbulb,
-    Sparkles,
     Settings,
-    Database
+    Sparkles
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Link } from 'react-router';
 
 export default function Home() {
     // Mock user data

@@ -2,16 +2,15 @@
  * The main component, everything summs up here
  */
 
-import Pages from '../../../pages'
-import Home from '../Home/Home'
 
-import './App.css'
+import Pages from '../../../pages/index.jsx';
+import './App.css';
 export default () => {
 
   return (
     <>
-      <Home />
-      {/* <Pages /> */}
+      {/* <Home /> */}
+      <Pages />
     </>
   )
 }
