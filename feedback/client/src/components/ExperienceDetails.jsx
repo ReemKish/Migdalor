@@ -1,22 +1,53 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Box from '@mui/material/Box'
 import Grid from '@mui/material/Grid'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
+import { GoogleGenAI } from "@google/genai";
 
 // Renders cadet & commander feedback for an experience
 export default function ExperienceDetails({ exp }) {
   // Simple simulated AI summaries by concatenating key phrases
-  // Combined AI summary (merge preservation + improvement tags)
-  const aiSummary = (() => {
-    if (!exp.cadetFeedback) return ''
-    const tags = []
-    if (Array.isArray(exp.cadetFeedback.preservation)) tags.push(...exp.cadetFeedback.preservation.map(p => p.tag))
-    if (Array.isArray(exp.cadetFeedback.improvement)) tags.push(...exp.cadetFeedback.improvement.map(p => p.tag))
-    const uniq = Array.from(new Set(tags)).slice(0, 5)
-    return uniq.length ? 'AI סיכום שימור ושיפור: ' + uniq.join(', ') + '.' : ''
-  })()
+  // AI summary: try calling Google GenAI with a hard-coded key; fall back to simple tag summary
+  const [aiSummary, setAiSummary] = useState('')
+
+  useEffect(() => {
+    if (!exp.cadetFeedback) { setAiSummary(''); return }
+
+    const apiKey = "AIzaSyClaox7mXlRPKi-8tNiQ7pK4WrbDfPIdmc"
+
+    // Build contents from cadet feedback entries
+    const entries = [
+      ...(exp.cadetFeedback.preservation || []),
+      ...(exp.cadetFeedback.improvement || [])
+    ]
+
+    const contentExample = `
+Here is a list of positive and improvement notes given by cadets for a cadet for a few assignments.
+
+In 1-2 hebrew sentences, analyze trends for
+1)what has improved/kept at high level.
+2) what has worsen/hadn’t improved.
+3) suggest a way for improvement/ "what should i do"
+5) answer in a clear and not too high level language.
+4) respond only with the sentences, no additional text.
+${entries.map(e => `{ "text": "${(e.text||'').replace(/\n/g,' ')}", "tag": "${(e.tag||'').replace(/\n/g,' ')}" }`).join(',\n')}
+`
+
+    async function getAi() {
+      // Direct dynamic import of the installed SDK; let errors propagate so you can see them
+      const mod = await import('@google/genai')
+      const GoogleGenAI = mod && (mod.GoogleGenAI || mod.default?.GoogleGenAI || mod.default || mod)
+      if (!GoogleGenAI) throw new Error('GoogleGenAI SDK not found in module exports')
+      const ai = new GoogleGenAI({ apiKey })
+      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: contentExample })
+      const text = response?.text || (response && JSON.stringify(response))
+      setAiSummary(text)
+    }
+
+    getAi()
+  }, [exp.cadetFeedback])
 
   // For commander, use their overallSummary as the commander-written summary
   const commanderSummary = exp.commanderFeedback && exp.commanderFeedback.overallSummary

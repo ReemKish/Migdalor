@@ -19,25 +19,17 @@ import RadioGroup from '@mui/material/RadioGroup'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import ExperienceDetails from '../components/ExperienceDetails'
 import Divider from '@mui/material/Divider'
-import experiencesData from '../data/experiences.json'
+import store from '../data/experiencesStore'
 
 const sampleTags = ['אנרגיה', 'תפקידים', 'קצב', 'מעשי', 'חומרים', 'מטרות', 'אחר']
 
 
 export default function Commanderx() {
-  // Load experiences from localStorage if present so additions persist across reloads
-  const [experiences, setExperiences] = useState(() => {
-    try {
-      const raw = localStorage.getItem('experiences')
-      return raw ? JSON.parse(raw) : experiencesData
-    } catch (e) {
-      return experiencesData
-    }
-  })
-
+  const [experiences, setExperiences] = useState(store.getExperiences())
   useEffect(() => {
-    try { localStorage.setItem('experiences', JSON.stringify(experiences)) } catch (e) {}
-  }, [experiences])
+    const unsub = store.subscribe(setExperiences)
+    return unsub
+  }, [])
 
   const [addOpen, setAddOpen] = useState(false)
   const [name, setName] = useState('')
@@ -86,8 +78,7 @@ export default function Commanderx() {
 
   function submitNewExperience() {
     const nameTrim = (name || '').trim() || ''
-    const id = experiences.length ? Math.max(...experiences.map(e => e.id)) + 1 : 1
-    const newExpTemplate = { id, name: nameTrim || `התנסות ${id}` }
+    const newExpTemplate = { name: nameTrim || '' }
 
     // Build feedback object based on form
     if (feedbackType === 'cadet') {
@@ -105,45 +96,13 @@ export default function Commanderx() {
       }
     }
 
-    // If an experience with same name exists, merge feedback into it
-    if (nameTrim) {
-      const idx = experiences.findIndex(e => (e.name || '').trim().toLowerCase() === nameTrim.toLowerCase())
-      if (idx !== -1) {
-        setExperiences(prev => {
-          const copy = [...prev]
-          const existing = { ...copy[idx] }
-          if (feedbackType === 'cadet') {
-            existing.cadetFeedback = existing.cadetFeedback || { preservation: [], improvement: [], generalSummary: '' }
-            existing.cadetFeedback.preservation = existing.cadetFeedback.preservation.concat(newExpTemplate.cadetFeedback.preservation)
-            existing.cadetFeedback.improvement = existing.cadetFeedback.improvement.concat(newExpTemplate.cadetFeedback.improvement)
-          } else {
-            existing.commanderFeedback = existing.commanderFeedback || { preservation: [], improvement: [], overallSummary: '' }
-            existing.commanderFeedback.preservation = existing.commanderFeedback.preservation.concat(newExpTemplate.commanderFeedback.preservation)
-            existing.commanderFeedback.improvement = existing.commanderFeedback.improvement.concat(newExpTemplate.commanderFeedback.improvement)
-            const newSummary = (newExpTemplate.commanderFeedback.overallSummary || '').trim()
-            if (newSummary) {
-              if (existing.commanderFeedback.overallSummary && existing.commanderFeedback.overallSummary.trim()) {
-                existing.commanderFeedback.overallSummary = existing.commanderFeedback.overallSummary.trim() + '\n\n' + newSummary
-              } else {
-                existing.commanderFeedback.overallSummary = newSummary
-              }
-            }
-          }
-          copy[idx] = existing
-          return copy
-        })
-        setAddOpen(false)
-        return
-      }
-    }
-
-    // Otherwise add as new experience
-    setExperiences(prev => [newExpTemplate, ...prev])
+    // Delegate merge/add to store
+    store.addOrMergeExperienceByName(newExpTemplate)
     setAddOpen(false)
   }
 
   function exportExperiences() {
-    const data = JSON.stringify(experiences, null, 2)
+    const data = store.exportExperiencesJSON()
     const blob = new Blob([data], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
