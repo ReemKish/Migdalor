@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage/HomePage';
 import KeysManagerPage from './pages/KeysManagerPage/KeysManagerPage';
 import KeysAllocatorPage from './pages/KeysAllocatorPage/KeysAllocatorPage';
 import SchedulePage from './pages/SchedulePage/SchedulePage';
+import DashboardPage from './pages/DashboardPage/DashboardPage';
 
 export default () => {
     return (
@@ -16,6 +17,7 @@ export default () => {
                 <Route path="/Schedule" element={<SchedulePage />} />
                 <Route path="/Logout" element={<LogoutPage />} />
                 <Route path="/AllocateKeys" element={<KeysAllocatorPage />} />
+                <Route path="/Dashboard" element={<DashboardPage />} />
             </Routes>
         </Router>
     );
