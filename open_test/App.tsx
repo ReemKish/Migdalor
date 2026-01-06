@@ -1,0 +1,429 @@
+
+import React, { useState, useEffect } from 'react';
+import { 
+  CheckCircle, Award, Settings, Shield, 
+  ChevronLeft, ChevronRight, RefreshCw, BrainCircuit, User
+} from 'lucide-react';
+import type { Question, QuizResult, Test } from './types';
+import { gradeAnswer } from './services/geminiService';
+import { DynamicIcon } from './components/Icon';
+
+type Screen = 'welcome' | 'quiz' | 'grading' | 'summary' | 'settings';
+
+const App: React.FC = () => {
+  // --- Global State ---
+  const [currentScreen, setCurrentScreen] = useState<Screen>('welcome');
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQIndex, setCurrentQIndex] = useState(0);
+  const [userAnswersMap, setUserAnswersMap] = useState<Record<number, string>>({});
+  const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [apiKey, setApiKey] = useState('');
+  const [availableTests, setAvailableTests] = useState<Test[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingTests, setLoadingTests] = useState<boolean>(true);
+  const [isAwaitingKeyForGrading, setIsAwaitingKeyForGrading] = useState(false);
+
+  useEffect(() => {
+    const fetchTests = async () => {
+      try {
+        const manifestResponse = await fetch('/tests/manifest.json');
+        if (!manifestResponse.ok) throw new Error(`HTTP error! status: ${manifestResponse.status}`);
+        const manifest = await manifestResponse.json();
+
+        const testPromises = manifest.testFiles.map((fileName: string) =>
+          fetch(`/tests/${fileName}`).then(res => {
+            if (!res.ok) throw new Error(`Failed to load ${fileName}`);
+            return res.json();
+          })
+        );
+        
+        const loadedTests = await Promise.all(testPromises);
+        setAvailableTests(loadedTests);
+      } catch (e) {
+        console.error("Failed to load tests", e);
+        if (e instanceof Error) {
+            setError(e.message);
+        } else {
+            setError("An unknown error occurred while loading tests.");
+        }
+      } finally {
+        setLoadingTests(false);
+      }
+    };
+
+    fetchTests();
+
+    const savedApiKey = localStorage.getItem('geminiApiKey');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
+  }, []);
+  
+  // Effect to automatically trigger grading after API key is provided
+  useEffect(() => {
+    if (isAwaitingKeyForGrading && apiKey) {
+        finishAndGrade();
+    }
+  }, [apiKey, isAwaitingKeyForGrading]);
+
+  const saveApiKey = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('geminiApiKey', key);
+  }
+
+  const startQuiz = (testId: string) => {
+    let questionsToLoad: Question[] = [];
+
+    if (testId === 'all') {
+      questionsToLoad = availableTests.flatMap(test => test.questions);
+    } else {
+      const selectedTest = availableTests.find(test => test.id === testId);
+      if (selectedTest) {
+        questionsToLoad = selectedTest.questions;
+      }
+    }
+    
+    // Shuffle questions
+    const shuffled = [...questionsToLoad].sort(() => 0.5 - Math.random());
+    
+    // Take a max of 5 questions, or fewer if not enough are available
+    const maxQuestions = Math.min(shuffled.length, 5);
+    const finalQuestions = shuffled.slice(0, maxQuestions);
+    
+    setQuestions(finalQuestions);
+    setCurrentQIndex(0);
+    setUserAnswersMap({});
+    setQuizResults([]);
+    setError(null);
+    setCurrentScreen('quiz');
+  };
+
+  const handleAnswerChange = (val: string) => {
+    const qId = questions[currentQIndex].id;
+    setUserAnswersMap(prev => ({ ...prev, [qId]: val }));
+  };
+
+  const navigate = (direction: 'next' | 'prev') => {
+    if (direction === 'next' && currentQIndex < questions.length - 1) {
+      setCurrentQIndex(prev => prev + 1);
+    } else if (direction === 'prev' && currentQIndex > 0) {
+      setCurrentQIndex(prev => prev - 1);
+    }
+  };
+
+  const finishAndGrade = async () => {
+    if (!apiKey) {
+        setError("Please set your Gemini API key in the settings before starting a quiz.");
+        setIsAwaitingKeyForGrading(true);
+        setCurrentScreen('settings');
+        return;
+    }
+
+    setIsAwaitingKeyForGrading(false);
+    setError(null);
+    setCurrentScreen('grading');
+    setLoadingProgress(0);
+    
+    const results: QuizResult[] = [];
+    
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const ans = userAnswersMap[q.id] || "";
+      
+      const grade = await gradeAnswer(q, ans, apiKey);
+      
+      results.push({
+        ...grade,
+        questionId: q.id,
+        questionText: q.question,
+        userAnswer: ans,
+      });
+
+      setLoadingProgress(Math.round(((i + 1) / questions.length) * 100));
+    }
+
+    setQuizResults(results);
+    setCurrentScreen('summary');
+  };
+
+  // --- Render Functions ---
+
+  const renderWelcomeScreen = () => {
+    if (loadingTests) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-6">
+          <RefreshCw size={48} className="text-blue-600 animate-spin mb-4" />
+          <p className="text-gray-600 text-lg">טוען מבחנים...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+       return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-red-50 rounded-lg border border-red-200">
+           <p className="text-red-700 font-bold">שגיאה בטעינת המבחנים</p>
+           <p className="text-red-600 mt-2">{error}</p>
+           <p className="text-gray-500 mt-4 text-sm">Please check the console for more details and ensure `tests/manifest.json` and the corresponding test files exist.</p>
+        </div>
+      );
+    }
+
+    return (
+    <div className="flex flex-col items-center justify-center h-full text-center space-y-8 p-6 animate-in fade-in duration-500">
+      <div className="bg-blue-100 p-4 rounded-full border-2 border-blue-600 relative">
+        <BrainCircuit size={64} className="text-blue-800" />
+        <div className="absolute -bottom-2 -right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full border border-white">AI Active</div>
+      </div>
+      <div>
+        <h1 className="text-4xl font-bold text-gray-800 mb-2">מבדק תו"ל יבשה</h1>
+        <p className="text-gray-600 text-lg">שאלות פתוחות • בדיקה מרוכזת בסיום המבחן</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
+        {availableTests.map((test) => (
+            <button 
+                key={test.id} 
+                onClick={() => startQuiz(test.id)} 
+                className={`p-6 bg-white border-2 border-${test.color}-100 hover:border-${test.color}-500 rounded-xl shadow-sm hover:shadow-md transition group`}
+            >
+                <DynamicIcon name={test.icon} className={`w-8 h-8 text-${test.color}-600 mx-auto mb-3 group-hover:scale-110 transition`} />
+                <h3 className="font-bold text-gray-800">{test.name}</h3>
+            </button>
+        ))}
+        {availableTests.length > 1 && (
+             <button onClick={() => startQuiz('all')} className="p-6 bg-white border-2 border-green-100 hover:border-green-500 rounded-xl shadow-sm hover:shadow-md transition group md:col-span-3">
+                <Award className="w-8 h-8 text-green-600 mx-auto mb-3 group-hover:scale-110 transition" />
+                <h3 className="font-bold text-gray-800">מבחן מסכם מלא</h3>
+            </button>
+        )}
+      </div>
+
+       <button onClick={() => setCurrentScreen('settings')} className="text-gray-400 text-xs underline mt-2">
+          הגדרות מתקדמות
+        </button>
+    </div>
+  )};
+
+  const renderSettingsScreen = () => (
+    <div className="max-w-xl mx-auto p-6 bg-white rounded-xl shadow mt-10 animate-in fade-in duration-300">
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+        <Settings /> הגדרות בודק AI
+      </h2>
+      {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
+      <div className="space-y-4">
+        <label htmlFor="apiKeyInput" className="block font-medium text-gray-700">Gemini API Key</label>
+        <p className="text-sm text-gray-500">מפתח ה-API שלך נשמר בדפדפן בלבד ולא נשלח לשום מקום אחר.</p>
+        <input 
+          id="apiKeyInput"
+          type="password" 
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="הכנס מפתח API כאן"
+          className="w-full p-3 border rounded-lg ltr text-left font-mono bg-gray-50"
+        />
+      </div>
+      <button 
+        onClick={() => {
+            saveApiKey(apiKey);
+            // If we are not waiting for a key to grade, go back to welcome screen.
+            // Otherwise, the useEffect will trigger grading and change the screen.
+            if (!isAwaitingKeyForGrading) {
+                setCurrentScreen('welcome');
+            }
+        }}
+        className="mt-8 w-full bg-gray-800 text-white p-3 rounded-lg hover:bg-gray-700 transition"
+      >
+        שמור
+      </button>
+    </div>
+  );
+
+  const renderQuizScreen = () => {
+    if (questions.length === 0) return <div>טוען...</div>;
+    const currentQ = questions[currentQIndex];
+    const savedAnswer = userAnswersMap[currentQ.id] || "";
+    const isLast = currentQIndex === questions.length - 1;
+
+    return (
+      <div className="max-w-3xl mx-auto h-full flex flex-col p-4 animate-in slide-in-from-right duration-300">
+        <div className="flex justify-between items-center mb-6">
+           <h2 className="text-xl font-bold text-gray-700">מבחן ידע</h2>
+           <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">
+             שאלה {currentQIndex + 1} מתוך {questions.length}
+           </span>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 flex-grow flex flex-col">
+          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
+             <div 
+               className="h-full bg-blue-500 transition-all duration-300 rounded-full"
+               style={{ width: `${((currentQIndex + 1) / questions.length) * 100}%` }}
+             />
+          </div>
+
+          <h3 className="text-lg text-gray-500 mb-2">{currentQ.topic}</h3>
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-8 leading-relaxed">
+            {currentQ.question}
+          </h2>
+
+          <textarea
+            value={savedAnswer}
+            onChange={(e) => handleAnswerChange(e.target.value)}
+            placeholder="רשום את תשובתך כאן..."
+            className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition h-48 text-lg resize-none mb-6"
+          />
+
+          <div className="mt-auto flex justify-between gap-4">
+             <button
+                onClick={() => navigate('prev')}
+                disabled={currentQIndex === 0}
+                className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
+                  ${currentQIndex === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+             >
+                <ChevronRight size={20} /> הקודם
+             </button>
+
+             {isLast ? (
+                <button
+                  onClick={finishAndGrade}
+                  className="flex-[2] py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 transition-all bg-green-600 hover:bg-green-700 shadow-lg hover:shadow-xl"
+                >
+                   הגש מבחן לבדיקה <CheckCircle size={20} />
+                </button>
+             ) : (
+                <button
+                  onClick={() => navigate('next')}
+                  className="flex-[2] py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 transition-all bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl"
+                >
+                   לשאלה הבאה <ChevronLeft size={20} />
+                </button>
+             )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderGradingScreen = () => (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-in fade-in duration-500">
+       <RefreshCw size={64} className="text-blue-600 animate-spin mb-6" />
+       <h2 className="text-2xl font-bold text-gray-800 mb-2">מנתח את התשובות שלך...</h2>
+       <p className="text-gray-500 mb-8">המערכת בודקת את התשובות מול מסמכי התו"ל</p>
+       
+       <div className="w-full max-w-md bg-gray-200 rounded-full h-4 overflow-hidden border border-gray-300">
+          <div 
+            className="bg-blue-600 h-full transition-all duration-300" 
+            style={{ width: `${loadingProgress}%` }}
+          ></div>
+       </div>
+       <p className="text-sm font-bold text-blue-600 mt-2">{loadingProgress}%</p>
+    </div>
+  );
+
+  const renderSummaryScreen = () => {
+    const totalScore = quizResults.reduce((acc, curr) => acc + curr.score, 0);
+    const averageScore = quizResults.length > 0 ? Math.round(totalScore / quizResults.length) : 0;
+
+    let gradeColor = 'text-red-600';
+    let gradeText = 'נכשל';
+    if (averageScore >= 90) { gradeColor = 'text-green-600'; gradeText = 'מצטיין'; }
+    else if (averageScore >= 70) { gradeColor = 'text-blue-600'; gradeText = 'עובר'; }
+    else if (averageScore >= 55) { gradeColor = 'text-yellow-600'; gradeText = 'עובר בקושי'; }
+
+    return (
+      <div className="max-w-4xl mx-auto p-4 animate-in fade-in duration-700">
+        <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
+          <div className="bg-gray-900 text-white p-10 text-center relative overflow-hidden">
+            <div className="relative z-10">
+              <h2 className="text-3xl font-bold mb-2">סיכום מבחן ידע</h2>
+              <div className="text-6xl font-black my-4">{averageScore}</div>
+              <div className={`text-xl font-bold px-4 py-1 rounded-full inline-block bg-white/20 ${gradeColor.replace('text', 'text-white')}`}>
+                {gradeText}
+              </div>
+            </div>
+            <Award className="absolute -bottom-10 -left-10 text-white/5 w-64 h-64 rotate-12" />
+          </div>
+
+          <div className="p-8">
+            <h3 className="font-bold text-xl text-gray-800 mb-6 border-b pb-2">פירוט תשובות ומשוב AI</h3>
+            <div className="space-y-8">
+              {quizResults.map((res, idx) => (
+                <div key={res.questionId} className="flex flex-col gap-4 border-b border-gray-100 pb-8 last:border-0">
+                  <div className="flex justify-between items-start">
+                    <h4 className="font-bold text-gray-800 text-lg w-3/4">{idx + 1}. {res.questionText}</h4>
+                    <span className={`font-bold text-xl ${res.score >= 70 ? 'text-green-600' : 'text-red-500'}`}>
+                      {res.score}/100
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="font-bold text-gray-500 text-xs mb-1 uppercase flex items-center gap-1">
+                        <User size={12}/> התשובה שלך:
+                      </p>
+                      <p className="text-gray-800 whitespace-pre-line">{res.userAnswer || "(לא ענית)"}</p>
+                    </div>
+                    
+                    <div className={`${res.score >= 70 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border p-4 rounded-lg`}>
+                      <p className="font-bold text-gray-500 text-xs mb-1 uppercase flex items-center gap-1">
+                        <BrainCircuit size={12}/> משוב AI:
+                      </p>
+                      <p className="text-gray-800 whitespace-pre-line">
+                        {res.feedback}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-blue-50 p-4 rounded-lg text-sm border-r-4 border-blue-500 mt-2">
+                    <p className="font-bold text-blue-800 text-xs mb-1 uppercase flex items-center gap-1">
+                       <CheckCircle size={12}/> תשובה מלאה ע"פ הספר:
+                    </p>
+                    <p className="text-gray-700 whitespace-pre-line">
+                        {res.correction}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button 
+              onClick={() => setCurrentScreen('welcome')}
+              className="w-full mt-8 bg-gray-900 text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg"
+            >
+              סיום וחזרה לתפריט ראשי
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-right" dir="rtl">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-700 text-white p-2 rounded-lg">
+            <Shield size={20} />
+          </div>
+          <h1 className="font-bold text-gray-800 hidden md:block">מערכת למידה - תו"ל יבשה</h1>
+        </div>
+        {currentScreen !== 'welcome' && (
+          <button onClick={() => setCurrentScreen('welcome')} className="text-sm text-gray-500 hover:text-blue-700 font-medium">
+            חזרה לתפריט ראשי
+          </button>
+        )}
+      </header>
+
+      <main className="container mx-auto max-w-4xl min-h-[calc(100vh-80px)] p-4">
+        {currentScreen === 'welcome' && renderWelcomeScreen()}
+        {currentScreen === 'settings' && renderSettingsScreen()}
+        {currentScreen === 'quiz' && renderQuizScreen()}
+        {currentScreen === 'grading' && renderGradingScreen()}
+        {currentScreen === 'summary' && renderSummaryScreen()}
+      </main>
+    </div>
+  );
+};
+
+export default App;
