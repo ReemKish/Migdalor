@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FileUp, FileJson, Download, BookOpen, Database, AlertCircle, CheckCircle, BrainCircuit, Image as ImageIcon, Shield, Target, MousePointer } from 'lucide-react';
+import { FileUp, FileJson, Download, BookOpen, Database, AlertCircle, CheckCircle, BrainCircuit, Image as ImageIcon, Shield, Target, MousePointer, Trash2, Edit3, Save } from 'lucide-react';
 
-const DEFAULT_API_KEY = "AIzaSyAM14qos5tCbGIM7beFvVc5KaQ8ukGdZvY";
+// API Key updated
+const DEFAULT_API_KEY = "";
 
 // PDF.js constants
 const PDF_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
@@ -35,11 +36,14 @@ export default function App() {
   ];
 
   const COLORS = [
-    { id: "blue", label: "כחול", class: "bg-blue-500" },
-    { id: "red", label: "אדום", class: "bg-red-500" },
-    { id: "green", label: "ירוק", class: "bg-green-500" },
-    { id: "yellow", label: "צהוב", class: "bg-yellow-500" }
+    { id: "blue", label: "כחול", class: "bg-blue-500", border: "border-blue-200", light: "bg-blue-50" },
+    { id: "red", label: "אדום", class: "bg-red-500", border: "border-red-200", light: "bg-red-50" },
+    { id: "green", label: "ירוק", class: "bg-green-500", border: "border-green-200", light: "bg-green-50" },
+    { id: "yellow", label: "צהוב", class: "bg-yellow-500", border: "border-yellow-200", light: "bg-yellow-50" }
   ];
+
+  // Helper to get color styles safely
+  const getColorStyles = (colorId) => COLORS.find(c => c.id === colorId) || COLORS[0];
 
   // Load PDF.js dynamically
   useEffect(() => {
@@ -137,6 +141,10 @@ export default function App() {
   };
 
   const handleProcess = async () => {
+    if (!apiKey) {
+        setErrorMsg("נא להזין מפתח API תקין של Gemini.");
+        return;
+    }
     if (!questionsFile) {
       setErrorMsg("נא להעלות קובץ שאלות.");
       return;
@@ -157,7 +165,7 @@ export default function App() {
 
       setProgressMsg("שולח לניתוח בינה מלאכותית (OCR + ניסוח מחדש)...");
 
-      // 2. Prepare Payload - Requesting ONLY the questions array
+      // 2. Prepare Payload
       const promptText = `
       You are an expert IDF military instructor assistant.
       
@@ -180,7 +188,7 @@ export default function App() {
       {
         "questions": [
           {
-            "id": number, // Sequential ID starting from 1
+            "id": number, 
             "topic": "Topic in Hebrew",
             "question": "Open-ended question text in Hebrew",
             "sourceText": "Excerpt from reference material including 'מתוך כרך...' header"
@@ -211,16 +219,29 @@ export default function App() {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`API Error: ${response.status} - ${errorBody.substring(0, 200)}`);
+        let errorMsg = `API Error: ${response.status}`;
+        try {
+            const errorJson = JSON.parse(errorBody);
+            if (errorJson.error && errorJson.error.message) {
+                errorMsg += ` - ${errorJson.error.message}`;
+            }
+        } catch (e) {
+            errorMsg += ` - ${errorBody.substring(0, 100)}`;
+        }
+        
+        if (response.status === 403) {
+            throw new Error("מפתח ה-API אינו תקין או נחסם (403). אנא הזן מפתח חדש.");
+        }
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
       const rawText = data.candidates[0].content.parts[0].text;
       const parsedResponse = JSON.parse(rawText);
       
-      // 4. Construct Final JSON Structure with User Selection
+      // 4. Construct Final JSON Structure
       const finalStructure = {
-        id: "generated_exam", // Fixed ID or could be UUID
+        id: "generated_exam_" + new Date().getTime(),
         name: examName,
         icon: selectedIcon,
         color: selectedColor,
@@ -237,6 +258,31 @@ export default function App() {
     }
   };
 
+  // --- Update Handlers ---
+
+  const handleDeleteQuestion = (indexToDelete) => {
+    if (!generatedJson) return;
+    const updatedQuestions = generatedJson.questions.filter((_, index) => index !== indexToDelete);
+    setGeneratedJson({
+      ...generatedJson,
+      questions: updatedQuestions
+    });
+  };
+
+  const handleUpdateQuestion = (indexToUpdate, field, newValue) => {
+    if (!generatedJson) return;
+    const updatedQuestions = generatedJson.questions.map((q, index) => {
+        if (index === indexToUpdate) {
+            return { ...q, [field]: newValue };
+        }
+        return q;
+    });
+    setGeneratedJson({
+        ...generatedJson,
+        questions: updatedQuestions
+    });
+  };
+
   const downloadJson = () => {
     if (!generatedJson) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(generatedJson, null, 2));
@@ -248,6 +294,14 @@ export default function App() {
     downloadAnchorNode.remove();
   };
 
+  // Render correct icon component
+  const getIconComponent = (iconName) => {
+      const found = ICONS.find(i => i.id === iconName);
+      return found ? found.icon : <BookOpen />;
+  };
+
+  const styles = generatedJson ? getColorStyles(generatedJson.color) : getColorStyles('blue');
+
   return (
     <div className="min-h-screen pb-12 font-sans bg-gray-50" dir="rtl">
       {/* Header */}
@@ -258,7 +312,7 @@ export default function App() {
               <BrainCircuit size={32} />
               מחולל מבחני תו"ל
             </h1>
-            <p className="opacity-80 mt-1">המרה חכמה לשאלות פתוחות (OCR)</p>
+            <p className="opacity-80 mt-1">המרה חכמה לשאלות פתוחות (OCR) + עורך</p>
           </div>
         </div>
       </header>
@@ -272,8 +326,10 @@ export default function App() {
             type="password" 
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            className="w-full p-2 border rounded bg-gray-50 font-mono text-sm"
+            placeholder="הזן כאן את מפתח ה-API שלך"
+            className="w-full p-2 border rounded bg-gray-50 font-mono text-sm focus:ring-2 focus:ring-green-500 outline-none"
           />
+          {!apiKey && <p className="text-red-500 text-xs mt-1">נדרש מפתח API לביצוע הפעולה.</p>}
         </div>
 
         {!pdfLibReady && (
@@ -282,8 +338,8 @@ export default function App() {
             </div>
         )}
 
+        {/* Input Sections - Only show if not complete to save space, or keep visible? Keeping visible for easy re-run */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Step 1: Reference */}
           <div className={`p-6 rounded-xl border-2 transition-all ${referenceFiles.length > 0 ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300 bg-white'}`}>
             <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
               <BookOpen className="text-green-700" />
@@ -310,7 +366,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Step 2: Questions */}
           <div className={`p-6 rounded-xl border-2 transition-all ${questionsFile ? 'border-blue-500 bg-blue-50' : 'border-dashed border-gray-300 bg-white'}`}>
             <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
               <ImageIcon className="text-blue-700" />
@@ -333,7 +388,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Step 3: Exam Configuration */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
             <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                 <Shield className="text-purple-700" />
@@ -341,19 +395,15 @@ export default function App() {
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Name Input */}
                 <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">שם השאלון (יופיע ב-JSON)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">שם השאלון</label>
                     <input 
                         type="text" 
                         value={examName}
                         onChange={(e) => setExamName(e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        placeholder="לדוגמה: מבחן מסכם - עקרונות המלחמה"
                     />
                 </div>
-
-                {/* Icon Selection */}
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">אייקון</label>
                     <div className="flex gap-2">
@@ -369,8 +419,6 @@ export default function App() {
                         ))}
                     </div>
                 </div>
-
-                {/* Color Selection */}
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">צבע נושא</label>
                     <div className="flex gap-2 h-[58px] items-center">
@@ -387,8 +435,8 @@ export default function App() {
             </div>
         </div>
 
-        {/* Step 4: Action */}
-        <div className="mt-8 text-center">
+        {/* Generate Button */}
+        <div className="mt-8 text-center mb-12">
           {status.startsWith('processing') || status.startsWith('extracting') ? (
             <div className="flex flex-col items-center justify-center space-y-3">
               <div className="w-8 h-8 border-4 border-gray-200 border-t-[#4b5320] rounded-full animate-spin"></div>
@@ -415,26 +463,110 @@ export default function App() {
           )}
         </div>
 
-        {/* Result Area */}
+        {/* --- RESULT EDITOR UI --- */}
         {status === 'complete' && generatedJson && (
-          <div className="mt-10 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden animate-fade-in">
-            <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                  <h3 className="font-bold text-lg text-gray-700">תוצאה ({generatedJson.questions.length} שאלות)</h3>
-                  <span className={`px-2 py-1 rounded text-xs text-white bg-${generatedJson.color === 'blue' ? 'blue' : generatedJson.color === 'red' ? 'red' : generatedJson.color === 'green' ? 'green' : 'yellow'}-500`}>
-                      {generatedJson.name}
-                  </span>
-              </div>
-              <button 
-                onClick={downloadJson}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 text-sm"
-              >
-                <Download size={16} />
-                הורד JSON
-              </button>
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden animate-fade-in mb-12">
+            
+            {/* Editor Header */}
+            <div className={`p-6 ${styles.class} text-white flex flex-col md:flex-row justify-between items-center gap-4`}>
+                <div className="flex items-center gap-4">
+                    <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                        {getIconComponent(generatedJson.icon)}
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold">{generatedJson.name}</h2>
+                        <span className="opacity-90 text-sm">סה"כ {generatedJson.questions.length} שאלות</span>
+                    </div>
+                </div>
+                <button 
+                    onClick={downloadJson}
+                    className="bg-white text-gray-900 hover:bg-gray-100 font-bold px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transition-transform hover:scale-105"
+                >
+                    <Download size={20} />
+                    הורד JSON מעודכן
+                </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto font-mono text-sm bg-gray-900 text-green-400" dir="ltr">
-              <pre>{JSON.stringify(generatedJson, null, 2)}</pre>
+
+            {/* Questions List */}
+            <div className="p-6 bg-gray-50 space-y-6">
+                {generatedJson.questions.map((q, idx) => (
+                    <div key={idx} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 relative group hover:shadow-md transition-shadow">
+                        
+                        {/* Delete Button */}
+                        <button 
+                            onClick={() => handleDeleteQuestion(idx)}
+                            className="absolute top-4 left-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                            title="מחק שאלה"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+
+                        <div className="grid gap-6">
+                            
+                            {/* Topic & ID */}
+                            <div className="flex items-center gap-4 pr-2">
+                                <span className={`flex items-center justify-center w-8 h-8 rounded-full ${styles.light} ${styles.class.replace('bg-', 'text-')} font-bold text-sm`}>
+                                    {idx + 1}
+                                </span>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">נושא</label>
+                                    <input 
+                                        type="text" 
+                                        value={q.topic}
+                                        onChange={(e) => handleUpdateQuestion(idx, 'topic', e.target.value)}
+                                        className="w-full text-sm font-semibold text-gray-800 border-b border-dashed border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Question Text */}
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
+                                    <Edit3 size={14} className="text-blue-500" />
+                                    השאלה
+                                </label>
+                                <textarea 
+                                    value={q.question}
+                                    onChange={(e) => handleUpdateQuestion(idx, 'question', e.target.value)}
+                                    rows={2}
+                                    className="w-full p-3 rounded bg-blue-50/50 border border-blue-100 text-gray-800 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                                />
+                            </div>
+
+                            {/* Source Text */}
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
+                                    <BookOpen size={14} className="text-green-500" />
+                                    טקסט המקור (התשובה)
+                                </label>
+                                <textarea 
+                                    value={q.sourceText}
+                                    onChange={(e) => handleUpdateQuestion(idx, 'sourceText', e.target.value)}
+                                    rows={4}
+                                    className="w-full p-3 rounded bg-green-50/50 border border-green-100 text-gray-700 text-sm leading-relaxed focus:ring-2 focus:ring-green-200 focus:border-green-400 outline-none transition-all"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ))}
+
+                {generatedJson.questions.length === 0 && (
+                    <div className="text-center py-10 text-gray-500">
+                        אין שאלות להצגה.
+                    </div>
+                )}
+            </div>
+            
+            {/* Footer Actions */}
+            <div className="p-4 bg-gray-100 border-t flex justify-center">
+                <button 
+                    onClick={downloadJson}
+                    className={`bg-gray-800 hover:bg-gray-900 text-white px-8 py-3 rounded-lg shadow-lg flex items-center gap-2 font-bold ${generatedJson.questions.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={generatedJson.questions.length === 0}
+                >
+                    <Save size={18} />
+                    שמור והורד קובץ סופי
+                </button>
             </div>
           </div>
         )}
