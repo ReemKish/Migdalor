@@ -1,0 +1,25 @@
+{
+  "name": "migdalor",
+  "version": "1.0.0",
+  "description": "Migdalor",
+  "homepage": "https://github.com/ReemKish/Migdalor#readme",
+  "bugs": {
+    "url": "https://github.com/ReemKish/Migdalor/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ReemKish/Migdalor.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.6"
+  }
+}
