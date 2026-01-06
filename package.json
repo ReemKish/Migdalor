@@ -2,14 +2,6 @@
   "name": "migdalor",
   "version": "1.0.0",
   "description": "Migdalor",
-  "homepage": "https://github.com/ReemKish/Migdalor#readme",
-  "bugs": {
-    "url": "https://github.com/ReemKish/Migdalor/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ReemKish/Migdalor.git"
-  },
   "license": "ISC",
   "author": "Tsevet X",
   "type": "module",
