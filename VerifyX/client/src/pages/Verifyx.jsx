@@ -14,6 +14,9 @@ const LESSONS = [
   { id: 'exp-weekly-commander', name: 'מפקד מתנסה שבועי' },
 ]
 
+
+
+
 const GROUPS = [
   { id: 'group-a', name: 'פלוגה א' },
   { id: 'group-b', name: 'פלוגה ב' },
