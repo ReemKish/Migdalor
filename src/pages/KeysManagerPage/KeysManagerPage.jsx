@@ -36,7 +36,7 @@ import {
     Computer as MonitorIcon,
 } from '@mui/icons-material';
 import { useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from 'lib/supabaseClient';
 
 const KeysManager = () => {
     const [user, setUser] = useState(null);
