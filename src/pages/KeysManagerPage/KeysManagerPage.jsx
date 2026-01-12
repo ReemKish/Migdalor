@@ -35,14 +35,27 @@ import {
     Edit as Edit2Icon,
     Computer as MonitorIcon,
 } from '@mui/icons-material';
+import { useEffect } from 'react';
+import { supabase } from 'lib/supabaseClient';
 
 const KeysManager = () => {
-    // Mock user data
-    const user = {
-        email: 'admin@example.com',
-        role: 'admin',
-        platoon_name: 'פלוגה א',
-    };
+    const [user, setUser] = useState(null);
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error) {
+                console.error('Error fetching user:', error);
+            }
+            const userData = supabase.from('users').select('email, site_role, pluga').eq('id', user.id).single();
+            setUser({
+                email: userData.email,
+                site_role: userData.site_role,
+                platoon_name: userData.pluga,
+            });
+        };
+
+        fetchUser();
+    }, []);
 
     const [showModal, setShowModal] = useState(false);
     const [editingKey, setEditingKey] = useState(null);
@@ -53,85 +66,77 @@ const KeysManager = () => {
         room_number: '',
         room_type: 'צוותי',
         has_computers: false,
-        zone: '',
+        building: '',
     });
 
-    const isAdmin = user?.role === 'admin';
+    
+    const [keys, setKeys] = useState([]);
+    useEffect(() => {
+        const fetchKeys = async () => {
+            const { data, error } = await supabase.from('keysmanager_keys').select('*');
+            if (error) {
+                console.error('Error fetching keys:', error);
+            } else {
+                setKeys(data);
+            }
+        };
 
-    // Mock data
-    const keys = [
-        {
-            id: '1',
-            room_number: '101',
-            room_type: 'צוותי',
-            has_computers: true,
-            zone: 'בניין A',
-            status: 'available',
-            manual_misdar_assignment: null,
-        },
-        {
-            id: '2',
-            room_number: '102',
-            room_type: 'צוותי',
-            has_computers: false,
-            zone: 'בניין A',
-            status: 'available',
-            manual_misdar_assignment: 'פלוגה א - סהר',
-        },
-        {
-            id: '3',
-            room_number: '201',
-            room_type: 'פלוגתי',
-            has_computers: true,
-            zone: 'בניין B',
-            status: 'available',
-            manual_misdar_assignment: null,
-        },
-        {
-            id: '4',
-            room_number: '202',
-            room_type: 'פלוגתי',
-            has_computers: false,
-            zone: 'בניין B',
-            status: 'available',
-            manual_misdar_assignment: null,
-        },
-    ];
-
-    const zones = [
+        fetchKeys();
+    }, []);    
+    
+    // TODO: Replace with real buildings
+    const buildings = [
         { id: '1', name: 'בניין A', order: 1 },
         { id: '2', name: 'בניין B', order: 2 },
         { id: '3', name: 'בניין C', order: 3 },
     ];
 
-    const todayLessons = [
-        {
-            id: '1',
-            assigned_key: '101',
-            crew_name: 'צוות 1',
-            start_time: '08:00',
-            end_time: '12:00',
-            status: 'assigned',
-        },
-    ];
+    const [todayLessons, setTodayLessons] = useState([]);
+    const [wednesdayLessons, setWednesdayLessons] = useState([]);
+    useEffect(() => {
+        function getNextWednesday(from = new Date()) {
+            const date = new Date(from);
+            const day = date.getDay(); // 0 = Sun, 3 = Wed
+            const daysUntilWednesday = (3 - day) % 7;
+            date.setDate(date.getDate() + daysUntilWednesday);
+            return date;
+        }
 
-    const wednesdayLessons = [
-        {
-            id: '1',
-            assigned_key: '201',
-            crew_name: 'צוות 2',
-            platoon_name: 'פלוגה ב',
-            start_time: '09:00',
-            end_time: '17:00',
-            crew_manager: 'user@example.com',
-        },
-    ];
+        function changeFormat(data) {
+            return {
+                id: data.id,
+                assigned_key: data.room_number,
+                crew_name: data.crew,
+                start_time: data.start_time.slice(0, 5),
+                end_time: data.end_time.slice(0, 5),
+                status: data.status,
+            }
+        }
 
+        const fetchLessons = async () => {
+            // get todays lessons
+            const { data: todayLessons } = await supabase.from('schedule_lessons')
+                .select('*')
+                .eq('date', new Date().toISOString().split("T")[0]);
+            setTodayLessons(todayLessons.map(changeFormat));
+
+
+            // get lessons on next wednesday
+            const { data: wednesdayLessons } = await supabase.from('schedule_lessons')
+                .select('*')
+                .eq('date', getNextWednesday().toISOString().split("T")[0]);
+            setWednesdayLessons(wednesdayLessons.map(changeFormat));
+        }
+
+        fetchLessons();
+    }, []);
+    
+    if (user === null) return <p> Loading... </p>;
+    const isAdmin = user?.site_role === 'admin' || true;
     // Get current key holder for a room
     const getCurrentHolder = (roomNumber) => {
         const now = new Date();
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
         const currentLesson = todayLessons.find(
             (lesson) =>
                 lesson.assigned_key === roomNumber &&
@@ -189,7 +194,7 @@ const KeysManager = () => {
 
         setShowModal(false);
         setEditingKey(null);
-        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, zone: '' });
+        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building: '' });
     };
 
     const handleEdit = (key) => {
@@ -198,7 +203,7 @@ const KeysManager = () => {
             room_number: key.room_number,
             room_type: key.room_type,
             has_computers: key.has_computers || false,
-            zone: key.zone || '',
+            building: key.building || '',
         });
         setShowModal(true);
     };
@@ -206,7 +211,7 @@ const KeysManager = () => {
     const handleClose = () => {
         setShowModal(false);
         setEditingKey(null);
-        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, zone: '' });
+        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building: '' });
     };
 
     const handleDelete = (id) => {
@@ -362,9 +367,9 @@ const KeysManager = () => {
                                             />
                                         </TableCell>
                                         <TableCell align="center">
-                                            {key.zone ? (
+                                            {key.building ? (
                                                 <Chip
-                                                    label={`📍 ${key.zone}`}
+                                                    label={`📍 ${key.building}`}
                                                     size="small"
                                                     variant="outlined"
                                                     sx={{ borderColor: '#cbd5e1', color: '#475569' }}
@@ -603,18 +608,18 @@ const KeysManager = () => {
                             label="יש מחשב בכיתה 💻"
                         />
 
-                        {/* Zone */}
+                        {/* building */}
                         <FormControl fullWidth>
                             <InputLabel>אזור (אופציונלי)</InputLabel>
                             <Select
-                                value={formData.zone}
-                                onChange={(e) => setFormData({ ...formData, zone: e.target.value })}
+                                value={formData.building}
+                                onChange={(e) => setFormData({ ...formData, building: e.target.value })}
                                 label="אזור (אופציונלי)"
                             >
                                 <MenuItem value="">בחר אזור...</MenuItem>
-                                {zones.map((zone) => (
-                                    <MenuItem key={zone.id} value={zone.name}>
-                                        {zone.name}
+                                {buildings.map((building) => (
+                                    <MenuItem key={building.id} value={building.name}>
+                                        {building.name}
                                     </MenuItem>
                                 ))}
                             </Select>
