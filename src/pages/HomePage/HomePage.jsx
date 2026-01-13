@@ -2,349 +2,205 @@ import {
     AppBar,
     Box,
     Card,
-    CardContent,
     Container,
     Grid,
+    IconButton,
     Toolbar,
     Typography
 } from '@mui/material';
-import { motion } from 'framer-motion';
 import {
-    Database,
-    Key,
-    Lightbulb,
     Notebook,
     Settings,
-    Sparkles
+    Sparkles,
+    LogOut
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function Home() {
     const [user, setUser] = useState(null);
+    const [authUserId, setAuthUserId] = useState(null);
+    const [editingName, setEditingName] = useState(false);
+    const [newName, setNewName] = useState('');
+
+    const navigate = useNavigate();
+
     useEffect(() => {
         const fetchUser = async () => {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (error) {
-                console.error('Error fetching user:', error);
-                return;
-            }
-            const { data, error2 } = await supabase
+            const { data: authData, error } = await supabase.auth.getUser();
+            if (error || !authData?.user) return;
+
+            setAuthUserId(authData.user.id);
+
+            const { data, error: error2 } = await supabase
                 .from('users')
                 .select('full_name, site_role')
-                .eq('id', user.id)
+                .eq('id', authData.user.id)
                 .single();
-            if (error2) {
-                console.error('Error fetching user data:', error);
-            } else {
+
+            if (!error2) {
                 setUser(data);
+                setNewName(data.full_name);
             }
-        }
+        };
+
         fetchUser();
     }, []);
 
-    if (user === null) return <p> Loading... </p>
+    const updateName = async () => {
+        if (!authUserId) return;
 
-    const isAdmin = user?.site_role === 'admin';
+        const { error } = await supabase
+            .from('users')
+            .update({ full_name: newName })
+            .eq('id', authUserId);
 
-    const features = [
-        {
-            title: 'ניהול כיתות',
-            description: 'ניהול מפתחות, הקצאת חדרים ולוח זמנים',
-            icon: Lightbulb,
-            path: '/Dashboard',
-            color: '#6366f1',
-            available: true
-        },
-        {
-            title: 'הקצאת מפתחות',
-            description: 'מקום להקצות מפתחות בצורה מסודרת',
-            icon: Key,
-            path: '/AllocateKeys',
-            color: '#3bf660ff',
-            available: true
-        },
-        {
-            title: 'ניהול כללי של מפתחות',
-            description: 'מקום לעקוב אחר מפתחות',
-            icon: Key,
-            path: '/ManageKeys',
-            color: '#f3f63bff',
-            available: true
-        },
-        {
-            title: 'לו"ז',
-            description: 'מה הלו"ז?',
-            icon: Notebook,
-            path: '/Schedule',
-            color: '#f63b3bff',
-            available: true
-        },
-    ];
-
-    const adminFeatures = [
-        {
-            title: 'ניהול משתמשים',
-            description: 'צפייה ועריכת משתמשים במערכת',
-            icon: Settings,
-            path: '/manage-users',
-            available: isAdmin
-        },
-        {
-            title: 'ייצוא נתונים',
-            description: 'ייצוא נתונים ל-PostgreSQL/Supabase',
-            icon: Database,
-            path: '/data-export',
-            available: isAdmin
+        if (!error) {
+            setUser(prev => ({ ...prev, full_name: newName }));
+            setEditingName(false);
         }
+    };
+
+    const logout = async () => {
+        await supabase.auth.signOut();
+        navigate('/login');
+    };
+
+    if (!user) return <p>Loading...</p>;
+
+    const isAdmin = user.site_role === 'admin';
+
+    const siteSections = [
+        { title: 'לוח בקרה', path: '/Dashboard' },
+        { title: 'לו"ז', path: '/Schedule' },
+        { title: 'ניהול מפתחות', path: '/ManageKeys' },
+        { title: 'הקצאת מפתחות', path: '/AllocateKeys' }
     ];
 
     return (
-        <Box
-            sx={{
-                minHeight: '100vh',
-                background: 'linear-gradient(to bottom right, #f8fafc, #ffffff, #f1f5f9)'
-            }}
-            dir="rtl"
-        >
-            {/* Top Navigation */}
+        <Box minHeight="100vh" dir="rtl" bgcolor="#f8fafc">
+            {/* Top Bar */}
             <AppBar
                 position="sticky"
                 sx={{
                     bgcolor: 'white',
-                    borderBottom: '1px solid #e2e8f0',
-                    boxShadow: 'none'
+                    boxShadow: 'none',
+                    borderBottom: '1px solid #e5e7eb'
                 }}
             >
-                <Toolbar sx={{ maxWidth: '1280px', width: '100%', mx: 'auto' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
-                        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <Box
-                                component="img"
-                                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693b00a201212578d09f8396/9732960ed_8.png"
-                                alt="מגדלור לוגו"
-                                sx={{ width: 48, height: 48, objectFit: 'contain' }}
-                            />
-                            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b' }}>
-                                מגדלור
-                            </Typography>
-                        </Link>
+                <Toolbar sx={{ maxWidth: 1280, mx: 'auto', width: '100%' }}>
+                    {/* RIGHT: Logo */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                            component="img"
+                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693b00a201212578d09f8396/9732960ed_8.png"
+                            alt="logo"
+                            sx={{ width: 40 }}
+                        />
+                        <Typography fontWeight={700}>מגדלור</Typography>
+                    </Box>
+
+                    {/* CENTER: Site Sections */}
+                    <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', gap: 3 }}>
+                        {siteSections.map(section => (
+                            <Link
+                                key={section.title}
+                                to={section.path}
+                                style={{ textDecoration: 'none' }}
+                            >
+                                <Typography
+                                    sx={{
+                                        fontWeight: 600,
+                                        color: '#1e293b',
+                                        '&:hover': { color: '#2563eb' }
+                                    }}
+                                >
+                                    {section.title}
+                                </Typography>
+                            </Link>
+                        ))}
+                    </Box>
+
+                    {/* LEFT: Settings + Logout */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <IconButton onClick={() => setEditingName(true)}>
+                            <Settings size={20} />
+                        </IconButton>
+
+                        <IconButton onClick={logout}>
+                            <LogOut size={20} />
+                        </IconButton>
                     </Box>
                 </Toolbar>
             </AppBar>
 
             <Container maxWidth="lg" sx={{ py: 6 }}>
-                <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    <Box sx={{ textAlign: 'center', mb: 6 }}>
-                        <Box
-                            component="img"
-                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693b00a201212578d09f8396/2f970d938_9.png"
-                            alt="מגדלור לוגו"
-                            sx={{ width: 96, height: 96, objectFit: 'contain', mx: 'auto', mb: 3 }}
-                        />
-
-                        <Typography variant="h3" sx={{ fontWeight: 700, color: '#1e293b', mb: 1.5 }}>
-                            שלום {user.full_name} 👋
+                {/* Greeting */}
+                <Box textAlign="center" mb={6}>
+                    <Box display="flex" justifyContent="center" alignItems="center" gap={1}>
+                        <Typography variant="h3" fontWeight={700}>
+                            שלום {user.full_name}
                         </Typography>
-                        <Typography variant="h6" sx={{ color: '#475569' }}>
-                            מגדלור, כאן בשבילך 🙂
-                        </Typography>
-                        <Typography sx={{ color: '#64748b', mt: 1 }}>״כשהאור תמיד דולק, הדרך ברורה.״</Typography>
-                    </Box>
-                </motion.div>
 
-                <Grid container spacing={3}>
-                    {features.map((feature, index) => (
-                        <Grid item xs={12} md={6} lg={4} key={feature.title}>
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.1 }}
-                                style={{ height: '100%' }}
-                            >
-                                {feature.available ? (
-                                    <Link to={feature.path} style={{ textDecoration: 'none', height: '100%', display: 'block' }}>
-                                        <Card
-                                            sx={{
-                                                p: 3,
-                                                height: '100%',
-                                                border: '1px solid #e2e8f0',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.3s',
-                                                '&:hover': {
-                                                    boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
-                                                    '& .icon-wrapper': {
-                                                        transform: 'scale(1.1)'
-                                                    }
-                                                }
-                                            }}
-                                        >
-                                            <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-                                                <Box
-                                                    className="icon-wrapper"
-                                                    sx={{
-                                                        width: 56,
-                                                        height: 56,
-                                                        bgcolor: feature.color,
-                                                        borderRadius: '12px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        mb: 2,
-                                                        transition: 'transform 0.3s'
-                                                    }}
-                                                >
-                                                    <feature.icon size={28} style={{ color: 'white' }} />
-                                                </Box>
-                                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
-                                                    {feature.title}
-                                                </Typography>
-                                                <Typography sx={{ color: '#475569', mb: 2 }}>
-                                                    {feature.description}
-                                                </Typography>
-                                                <Box
-                                                    sx={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        color: '#6366f1',
-                                                        fontWeight: 500
-                                                    }}
-                                                >
-                                                    <span>כניסה</span>
-                                                </Box>
-                                            </CardContent>
-                                        </Card>
-                                    </Link>
-                                ) : (
-                                    <Card
-                                        sx={{
-                                            p: 3,
-                                            height: '100%',
-                                            border: '1px solid #e2e8f0',
-                                            opacity: 0.6,
-                                            cursor: 'not-allowed'
-                                        }}
-                                    >
-                                        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-                                            <Box
-                                                sx={{
-                                                    width: 56,
-                                                    height: 56,
-                                                    bgcolor: feature.color,
-                                                    borderRadius: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    mb: 2,
-                                                    opacity: 0.5
-                                                }}
-                                            >
-                                                <feature.icon size={28} style={{ color: 'white' }} />
-                                            </Box>
-                                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
-                                                {feature.title}
-                                            </Typography>
-                                            <Typography sx={{ color: '#475569', mb: 2 }}>
-                                                {feature.description}
-                                            </Typography>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#94a3b8', fontWeight: 500 }}>
-                                                <span>בקרוב...</span>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </motion.div>
-                        </Grid>
-                    ))}
-                </Grid>
-
-                {/* Admin Section */}
-                {isAdmin && (
-                    <Box sx={{ mt: 6 }}>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.4 }}
+                        <Typography
+                            sx={{
+                                px: 1.5,
+                                py: 0.5,
+                                borderRadius: '999px',
+                                fontSize: 14,
+                                bgcolor: isAdmin ? '#fee2e2' : '#e0f2fe',
+                                color: isAdmin ? '#991b1b' : '#075985'
+                            }}
                         >
-                            <Typography variant="h5" sx={{ fontWeight: 700, color: '#1e293b', mb: 3 }}>
-                                🛡️ אזור מנהל
-                            </Typography>
-                        </motion.div>
-                        <Grid container spacing={3}>
-                            {adminFeatures.map((feature, index) => (
-                                <Grid item xs={12} md={6} lg={4} key={feature.title}>
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 0.5 + index * 0.1 }}
-                                        style={{ height: '100%' }}
-                                    >
-                                        <Link to={feature.path} style={{ textDecoration: 'none', height: '100%', display: 'block' }}>
-                                            <Card
-                                                sx={{
-                                                    p: 3,
-                                                    height: '100%',
-                                                    border: '2px solid #bfdbfe',
-                                                    bgcolor: 'rgba(239, 246, 255, 0.3)',
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.3s',
-                                                    '&:hover': {
-                                                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
-                                                        borderColor: '#93c5fd',
-                                                        '& .icon-wrapper': {
-                                                            transform: 'scale(1.1)'
-                                                        }
-                                                    }
-                                                }}
-                                            >
-                                                <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
-                                                    <Box
-                                                        className="icon-wrapper"
-                                                        sx={{
-                                                            width: 56,
-                                                            height: 56,
-                                                            bgcolor: '#2563eb',
-                                                            borderRadius: '12px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            mb: 2,
-                                                            transition: 'transform 0.3s'
-                                                        }}
-                                                    >
-                                                        <feature.icon size={28} style={{ color: 'white' }} />
-                                                    </Box>
-                                                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
-                                                        {feature.title}
-                                                    </Typography>
-                                                    <Typography sx={{ color: '#475569', mb: 2 }}>
-                                                        {feature.description}
-                                                    </Typography>
-                                                    <Box
-                                                        sx={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            color: '#2563eb',
-                                                            fontWeight: 500
-                                                        }}
-                                                    >
-                                                        <span>כניסה</span>
-                                                    </Box>
-                                                </CardContent>
-                                            </Card>
-                                        </Link>
-                                    </motion.div>
-                                </Grid>
-                            ))}
-                        </Grid>
+                            {user.site_role}
+                        </Typography>
+                    </Box>
+                </Box>
+
+                {/* Username Edit */}
+                {editingName && (
+                    <Box maxWidth={400} mx="auto" mb={6}>
+                        <Card sx={{ p: 3 }}>
+                            <Typography fontWeight={600} mb={2}>✏️ שינוי שם משתמש</Typography>
+                            <input
+                                value={newName}
+                                onChange={e => setNewName(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    border: '1px solid #cbd5f5'
+                                }}
+                            />
+                            <Box mt={2} display="flex" gap={1}>
+                                <button onClick={updateName}>שמור</button>
+                                <button onClick={() => setEditingName(false)}>ביטול</button>
+                            </Box>
+                        </Card>
                     </Box>
                 )}
+
+                {/* Future Section */}
+                <Box mt={8}>
+                    <Typography variant="h5" fontWeight={700} mb={3}>
+                        🚀 תוספות עתידיות
+                    </Typography>
+                    <Grid container spacing={3}>
+                        {[
+                            { title: 'משימות', icon: Sparkles },
+                            { title: 'יומן', icon: Notebook }
+                        ].map(item => (
+                            <Grid item xs={12} md={6} key={item.title}>
+                                <Card sx={{ p: 3, opacity: 0.7, border: '1px dashed #c7d2fe' }}>
+                                    <item.icon />
+                                    <Typography fontWeight={700}>{item.title}</Typography>
+                                    <Typography color="#64748b">בקרוב...</Typography>
+                                </Card>
+                            </Grid>
+                        ))}
+                    </Grid>
+                </Box>
             </Container>
         </Box>
     );

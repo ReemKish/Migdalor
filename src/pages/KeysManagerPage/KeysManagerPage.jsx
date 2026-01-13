@@ -36,7 +36,7 @@ import {
     Computer as MonitorIcon,
 } from '@mui/icons-material';
 import { useEffect } from 'react';
-import { supabase } from '../../../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 
 const KeysManager = () => {
     const [user, setUser] = useState(null);
@@ -69,7 +69,7 @@ const KeysManager = () => {
         building: '',
     });
 
-    
+
     const [keys, setKeys] = useState([]);
     useEffect(() => {
         const fetchKeys = async () => {
@@ -82,8 +82,8 @@ const KeysManager = () => {
         };
 
         fetchKeys();
-    }, []);    
-    
+    }, []);
+
     // TODO: Replace with real buildings
     const buildings = [
         { id: '1', name: 'בניין A', order: 1 },
@@ -130,7 +130,7 @@ const KeysManager = () => {
 
         fetchLessons();
     }, []);
-    
+
     if (user === null) return <p> Loading... </p>;
     const isAdmin = user?.site_role === 'admin' || true;
     // Get current key holder for a room
