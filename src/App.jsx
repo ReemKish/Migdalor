@@ -8,7 +8,7 @@ import SchedulePage from './pages/SchedulePage/SchedulePage';
 import DashboardPage from './pages/DashboardPage/DashboardPage';
 
 import { useEffect, useState } from 'react';
-import { supabase } from './lib/supabaseClient'
+import { supabase } from 'lib/supabaseClient'
  
 function useSession() {
   const [session, setSession] = useState(null);
@@ -44,7 +44,7 @@ export default () => {
     return (
         <Router>
             <Routes>
-                <Route path="/" element={<Navigate to="/Home" replace/>} />
+                <Route path="/" element={<Navigate to="/Login" replace/>} />
                 <Route path="/Login" element={<LoginPage />} />
                 <Route path="/Home" element={<HomePage />} />
                 <Route path="/ManageKeys" element={<KeysManagerPage />} />
