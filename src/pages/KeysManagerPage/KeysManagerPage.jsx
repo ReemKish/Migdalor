@@ -69,8 +69,9 @@ const KeysManager = () => {
         building: '',
     });
 
-    
+
     const [keys, setKeys] = useState([]);
+    const [buildings, setBuildings] = useState([]);
     useEffect(() => {
         const fetchKeys = async () => {
             const { data, error } = await supabase.from('keysmanager_keys').select('*');
@@ -81,15 +82,18 @@ const KeysManager = () => {
             }
         };
 
+        const fetchBuildings = async () => {
+            const { data, error } = await supabase.from("buildings").select("*");
+            if (error) {
+                console.error(error);
+            } else {
+                setBuildings(data);
+            }
+        }
+
         fetchKeys();
-    }, []);    
-    
-    // TODO: Replace with real buildings
-    const buildings = [
-        { id: '1', name: 'בניין A', order: 1 },
-        { id: '2', name: 'בניין B', order: 2 },
-        { id: '3', name: 'בניין C', order: 3 },
-    ];
+        fetchBuildings();
+    }, []);
 
     const [todayLessons, setTodayLessons] = useState([]);
     const [wednesdayLessons, setWednesdayLessons] = useState([]);
@@ -130,7 +134,7 @@ const KeysManager = () => {
 
         fetchLessons();
     }, []);
-    
+
     if (user === null) return <p> Loading... </p>;
     const isAdmin = user?.site_role === 'admin' || true;
     // Get current key holder for a room
@@ -180,7 +184,7 @@ const KeysManager = () => {
         return null;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!formData.room_number) {
             alert('אנא הזן מספר חדר');
             return;
@@ -189,7 +193,20 @@ const KeysManager = () => {
         if (editingKey) {
             console.log('Updating key:', editingKey.id, formData);
         } else {
+            const key = {
+                room_number: formData.room_number,
+                room_type: formData.room_type,
+                has_computers: formData.has_computers,
+                building: formData.building,
+                status: 'free',
+                manual_misdar_assignment: "",
+            };
+            const { error } = await supabase.from("keysmanager_keys").insert(key);
             console.log('Creating key:', formData);
+            if (error !== null) {
+                console.error(error);
+
+            }
         }
 
         setShowModal(false);
@@ -594,6 +611,7 @@ const KeysManager = () => {
                             >
                                 <MenuItem value="צוותי">צוותי 🏠</MenuItem>
                                 <MenuItem value="פלוגתי">פלוגתי 🏢</MenuItem>
+                                <MenuItem value="פלוגתי">"דו-צוותי"</MenuItem>
                             </Select>
                         </FormControl>
 
