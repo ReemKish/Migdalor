@@ -36,7 +36,7 @@ import {
     Computer as MonitorIcon,
 } from '@mui/icons-material';
 import { useEffect } from 'react';
-import { supabase } from 'lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 
 const KeysManager = () => {
     const [user, setUser] = useState(null);
@@ -94,6 +94,7 @@ const KeysManager = () => {
         fetchKeys();
         fetchBuildings();
     }, []);
+
 
     const [todayLessons, setTodayLessons] = useState([]);
     const [wednesdayLessons, setWednesdayLessons] = useState([]);
@@ -197,7 +198,7 @@ const KeysManager = () => {
                 room_number: formData.room_number,
                 room_type: formData.room_type,
                 has_computers: formData.has_computers,
-                building: formData.building,
+                building_id: formData.building,
                 status: 'free',
                 manual_misdar_assignment: "",
             };
@@ -367,21 +368,14 @@ const KeysManager = () => {
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                                 <KeyIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
-                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                                    {key.room_number}
-                                                </Typography>
-                                            </Box>
-                                        </TableCell>
-                                        <TableCell align="center">
-                                            <Chip
-                                                label={key.room_type === 'פלוגתי' ? '🏢 פלוגתי' : '🏠 צוותי'}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{
-                                                    borderColor: key.room_type === 'פלוגתי' ? '#c084fc' : '#60a5fa',
-                                                    color: key.room_type === 'פלוגתי' ? '#7e22ce' : '#1d4ed8',
-                                                }}
-                                            />
+                                                <Typography variant="body2" sx={{ fontWeight: 500 }}> {key.room_number} </Typography> </Box> </TableCell> <TableCell align="center"> <Chip label={key.room_type === 'פלוגתי' ? '🏢 פלוגתי' : '🏠 צוותי'}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{
+                                                        borderColor: key.room_type === 'פלוגתי' ? '#c084fc' : '#60a5fa',
+                                                        color: key.room_type === 'פלוגתי' ? '#7e22ce' : '#1d4ed8',
+                                                    }}
+                                                />
                                         </TableCell>
                                         <TableCell align="center">
                                             {key.building ? (
@@ -409,17 +403,11 @@ const KeysManager = () => {
                                         <TableCell align="center">
                                             {(() => {
                                                 const holder = getCurrentHolder(key.room_number);
-                                                return holder ? (
-                                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                                                        <Chip
-                                                            label="תפוס"
-                                                            size="small"
-                                                            sx={{ bgcolor: '#fef3c7', color: '#92400e' }}
-                                                        />
-                                                        <Typography variant="caption" sx={{ color: '#475569' }}>
-                                                            {holder}
-                                                        </Typography>
-                                                    </Box>
+                                                return holder ? (<Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}> <Chip label="תפוס" size="small" sx={{ bgcolor: '#fef3c7', color: '#92400e' }} />
+                                                    <Typography variant="caption" sx={{ color: '#475569' }}>
+                                                        {holder}
+                                                    </Typography>
+                                                </Box>
                                                 ) : (
                                                     <Chip
                                                         label="זמין"
@@ -636,7 +624,7 @@ const KeysManager = () => {
                             >
                                 <MenuItem value="">בחר אזור...</MenuItem>
                                 {buildings.map((building) => (
-                                    <MenuItem key={building.id} value={building.name}>
+                                    <MenuItem key={building.id} value={building.id}>
                                         {building.name}
                                     </MenuItem>
                                 ))}
