@@ -37,6 +37,7 @@ import {
 import { supabase } from "../../lib/supabaseClient";
 
 const KeysAllocator = () => {
+  // TODO: make user real
   // Mock user data
   const user = {
     email: "admin@example.com",
@@ -54,6 +55,7 @@ const KeysAllocator = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [allKeys, setAllKeys] = useState([]);
   const [lessons, setLessons] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Save selected date to localStorage
   useEffect(() => {
@@ -89,34 +91,43 @@ const KeysAllocator = () => {
           .from("schedule_lessons")
           .select(
             `
-          id,
-          start_time,
-          end_time,
-          status,
-          date,
-          room_number,
-          need_computer,
-          needed_room_type_id,
-          group_node(name),
-          room_type:needed_room_type_id(name)
+            id,
+            start_time,
+            end_time,
+            status,
+            date,
+            room_number,
+            need_computer,
+            needed_room_type_id,
+            group_node(id, name, parent_id, group_type_id), 
+            room_type:needed_room_type_id(name)
         `,
           )
           .eq("date", selectedDate);
 
         if (lessonsError) throw lessonsError;
 
-        const formattedLessons = lessonsData.map((lesson) => ({
-          id: lesson.id,
-          team_name: lesson.group_node?.name || "Unknown", // Replaced crew/pluga with unified name
-          start_time: lesson.start_time,
-          end_time: lesson.end_time,
-          room_type_needed: lesson.room_type?.name || "Unknown",
-          needs_computers: lesson.need_computer,
-          status: lesson.status,
-          assigned_key: lesson.room_number,
-          date: lesson.date,
-        }));
-
+        const formattedLessons =
+          lessonsData?.map((l) => {
+            const isPlatoon = l.group_node?.group_type_id === 3; // Company
+            return {
+              id: l.id,
+              team_id: l.group_node?.id,
+              // אם זו פלוגה, היא הפלוגה של עצמה. אם צוות, הפלוגה היא האבא.
+              effective_platoon_id: isPlatoon
+                ? l.group_node?.id
+                : l.group_node?.parent_id,
+              team_name: l.group_node?.name || "Unknown",
+              start_time: l.start_time,
+              end_time: l.end_time,
+              room_type_name: l.room_type?.name || "Unknown",
+              needs_computers: l.need_computer,
+              status: l.status,
+              assigned_key: l.room_number,
+              date: l.date,
+            };
+          }) || [];
+        console.log("Fetched lessons data:", formattedLessons);
         setLessons(formattedLessons);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -126,7 +137,7 @@ const KeysAllocator = () => {
     };
 
     fetchData();
-  }, [selectedDate]);
+  }, [selectedDate, refreshTrigger]);
 
   const isAdmin = user.roles.includes("admin");
 
@@ -163,144 +174,136 @@ const KeysAllocator = () => {
     }
   };
   /////////////////////////////////////////////////////////////
-  const allocateKeys = async () => {
-    setIsAllocating(true);
-    console.log("Allocating keys...");
+  // Helper function to check if two time ranges overlap
+  const timesOverlap = (start1, end1, start2, end2) => {
+    return start1 < end2 && start2 < end1;
+  };
 
-    // Get lessons to allocate (selected ones or all pending)
+  const allocateKeys = async () => {
+    // make sure is no התנגשויות
+    //TODO: prohibit גדוד level lessons
+    // add דוץ
+    setIsAllocating(true);
+
     const lessonsToAllocate =
       selectedLessons.length > 0
         ? lessons.filter((l) => selectedLessons.includes(l.id))
         : lessons.filter((l) => l.status === "pending");
 
-    if (lessonsToAllocate.length === 0) {
-      setIsAllocating(false);
-      alert("אין שיעורים לשבץ");
-      return;
-    }
-
-    // Available keys from selected
     let availableKeys = allKeys.filter((k) => selectedKeys.includes(k.id));
 
-    if (availableKeys.length === 0) {
+    if (lessonsToAllocate.length === 0 || availableKeys.length === 0) {
       setIsAllocating(false);
-      alert("אין מפתחות זמינים לשיבוץ");
+      alert("אין נתונים לשיבוץ");
       return;
     }
 
-    //// Allocation algorithm
-
-    // Sort lessons by priority
+    // מיון עדיפויות
     const sortedLessons = [...lessonsToAllocate].sort((a, b) => {
-      // 1. Platoon rooms (פלוגתי) first
-      const aIsPlatoonRoom = a.room_type_needed === "פלוגתי" ? 0 : 1;
-      const bIsPlatoonRoom = b.room_type_needed === "פלוגתי" ? 0 : 1;
-      if (aIsPlatoonRoom !== bIsPlatoonRoom)
-        return aIsPlatoonRoom - bIsPlatoonRoom;
-
-      // 2. Lessons requiring computers
-      const aHasComputers = a.needs_computers ? 0 : 1;
-      const bHasComputers = b.needs_computers ? 0 : 1;
-      if (aHasComputers !== bHasComputers) return aHasComputers - bHasComputers;
-
-      // 3. Earlier lessons
+      if (a.room_type_name !== b.room_type_name)
+        return a.room_type_name === "פלוגתי" ? -1 : 1;
+      if (a.needs_computers !== b.needs_computers)
+        return a.needs_computers ? -1 : 1;
       return a.start_time.localeCompare(b.start_time);
     });
 
-    const allocations = {};
+    const finalUpdates = [];
+    const sessionAllocations = [];
 
-    // Allocate keys to lessons
     for (const lesson of sortedLessons) {
       if (availableKeys.length === 0) break;
 
-      // Score each available key
       let bestKey = null;
-      let bestScore = -1;
+      let maxScore = -Infinity;
 
       for (const key of availableKeys) {
+        // Check if this key has any overlapping assignments
+        const hasOverlap = lessons.some((l) => {
+          if (l.id === lesson.id || !l.assigned_key) return false;
+          return (
+            l.assigned_key === key.room_number &&
+            timesOverlap(
+              lesson.start_time,
+              lesson.end_time,
+              l.start_time,
+              l.end_time,
+            )
+          );
+        });
+
+        // Also check against allocations made in this session
+        const sessionOverlap = sessionAllocations.some((alloc) => {
+          return (
+            alloc.room_number === key.room_number &&
+            timesOverlap(
+              lesson.start_time,
+              lesson.end_time,
+              alloc.start_time,
+              alloc.end_time,
+            )
+          );
+        });
+
+        // Skip keys with overlapping lessons
+        if (hasOverlap || sessionOverlap) continue;
+
         let score = 0;
 
-        // Check if room type matches
-        if (key.room_type !== lesson.room_type_needed) {
-          // Can upgrade צוותי to פלוגתי if needed
-          if (
-            lesson.room_type_needed === "צוותי" &&
-            key.room_type === "פלוגתי"
-          ) {
-            score += 50; // Upgrade is acceptable but not preferred
-          } else if (
-            lesson.room_type_needed === "פלוגתי" &&
-            key.room_type === "צוותי"
-          ) {
-            score -= 100; // Downgrade not allowed
-          } else {
-            score -= 100;
-          }
-        } else {
-          score += 100; // Perfect room type match
-        }
+        // בדיקת התאמת סוג חדר
+        if (key.room_type === lesson.room_type_name) score += 1000;
+        else if (
+          lesson.room_type_name === "צוותי" &&
+          key.room_type === "פלוגתי"
+        )
+          score += 400;
+        else score -= 10000;
 
-        // Check if computer requirement is met
-        if (lesson.needs_computers && !key.has_computers) {
-          score -= 50;
-        } else if (lesson.needs_computers && key.has_computers) {
-          score += 50;
-        }
-
-        // Check crew affinity (has this crew used this room before today)
-        const crewUsedThisRoom = Object.values(allocations).some(
-          (alloc) =>
-            alloc.crew_name === lesson.crew_name &&
-            alloc.assigned_key === key.room_number,
+        // שימור כיתה לצוות
+        const teamMatch = lessons.find(
+          (l) =>
+            l.team_id === lesson.team_id && l.assigned_key === key.room_number,
         );
-        if (crewUsedThisRoom) {
-          score += 200; // Strong preference for crew consistency
-        }
+        if (teamMatch) score += 3000;
 
-        // Check platoon affinity
-        const platoonUsedThisRoom = Object.values(allocations).some(
-          (alloc) =>
-            alloc.platoon_name === lesson.platoon_name &&
-            alloc.assigned_key === key.room_number,
+        // שימור כיתה לפלוגה (שימוש ב-ID האפקטיבי)
+        const platoonMatch = lessons.find(
+          (l) =>
+            l.effective_platoon_id === lesson.effective_platoon_id &&
+            l.assigned_key === key.room_number,
         );
-        if (platoonUsedThisRoom) {
-          score += 150; // Strong preference for platoon consistency
-        }
+        if (platoonMatch) score += 1200;
 
-        if (score > bestScore) {
-          bestScore = score;
+        if (score > maxScore) {
+          maxScore = score;
           bestKey = key;
         }
       }
 
-      // Allocate the best key to this lesson
-      if (bestKey && bestScore >= -50) {
-        allocations[lesson.id] = {
-          ...lesson,
-          assigned_key: bestKey.room_number,
-          status: "assigned",
-        };
-
-        // Remove used key from available
+      if (bestKey && maxScore > 0) {
+        finalUpdates.push({ id: lesson.id, room_number: bestKey.room_number });
+        sessionAllocations.push({
+          room_number: bestKey.room_number,
+          start_time: lesson.start_time,
+          end_time: lesson.end_time,
+        });
         availableKeys = availableKeys.filter((k) => k.id !== bestKey.id);
-        console.log(
-          `Allocated room ${bestKey.room_number} to ${lesson.crew_name} (${lesson.start_time}-${lesson.end_time})`,
-        );
       }
     }
 
-    // Simulate allocation delay
-    setTimeout(() => {
-      console.log("Allocation complete:", allocations);
-      setIsAllocating(false);
-      setSelectedKeys([]);
-      setSelectedLessons([]);
-      alert(
-        `שיבוץ הושלם בהצלחה! ${Object.keys(allocations).length} שיעורים שובצו`,
-      );
-    }, 1500);
-  };
+    // עדכון DB
+    for (const up of finalUpdates) {
+      await supabase
+        .from("schedule_lessons")
+        .update({ room_number: up.room_number, status: "assigned" })
+        .eq("id", up.id);
+    }
 
+    alert(`הוקצו בהצלחה ${finalUpdates.length} שיעורים`);
+    setIsAllocating(false);
+    setSelectedLessons([]);
+    setSelectedKeys([]);
+    setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
+  };
   const resetAllocations = () => {
     if (window.confirm("האם למחוק את כל ההקצאות?")) {
       console.log("Resetting allocations...");
@@ -313,10 +316,35 @@ const KeysAllocator = () => {
     alert("שיעור נמחק");
   };
 
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
+    /////// TODO: check if works
     if (window.confirm("האם למחוק את כל השיעורים?")) {
-      console.log("Deleting all lessons...");
-      alert("כל השיעורים נמחקו");
+      try {
+        // Get all lesson IDs for the selected date
+        const lessonIds = lessons.map((l) => l.id);
+
+        if (lessonIds.length === 0) {
+          alert("אין שיעורים למחוק");
+          return;
+        }
+
+        // Delete all lessons for the selected date
+        const { error } = await supabase
+          .from("schedule_lessons")
+          .delete()
+          .eq("date", selectedDate);
+
+        if (error) throw error;
+
+        // Update local state
+        setLessons([]);
+        setSelectedLessons([]);
+
+        alert("כל השיעורים נמחקו בהצלחה");
+      } catch (error) {
+        console.error("Error deleting lessons:", error);
+        alert("שגיאה במחיקת השיעורים");
+      }
     }
   };
 
@@ -719,7 +747,8 @@ const KeysAllocator = () => {
                               fontSize: "0.875rem",
                             }}
                           >
-                            {lesson.start_time}-{lesson.end_time}
+                            {lesson.start_time?.slice(0, 5)} -{" "}
+                            {lesson.end_time?.slice(0, 5)}
                           </TableCell>
                           <TableCell align="center">
                             <Box
