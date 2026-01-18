@@ -44,15 +44,21 @@ const KeysAllocator = () => {
     platoon_name: "פלוגה א",
   };
 
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const savedDate = localStorage.getItem("keysAllocatorDate");
+    return savedDate || new Date().toISOString().split("T")[0];
+  });
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [selectedLessons, setSelectedLessons] = useState([]);
   const [isAllocating, setIsAllocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allKeys, setAllKeys] = useState([]);
   const [lessons, setLessons] = useState([]);
+
+  // Save selected date to localStorage
+  useEffect(() => {
+    localStorage.setItem("keysAllocatorDate", selectedDate);
+  }, [selectedDate]);
 
   // Fetch data from Supabase
   useEffect(() => {
@@ -79,22 +85,21 @@ const KeysAllocator = () => {
         setAllKeys(formattedKeys);
 
         // 2. Fetch lessons with JOINS for Team and Room Type names
-        // Inside useEffect -> fetchData
         const { data: lessonsData, error: lessonsError } = await supabase
           .from("schedule_lessons")
           .select(
             `
-    id,
-    start_time,
-    end_time,
-    status,
-    date,
-    room_number,
-    need_computer,
-    needed_room_type_id,
-    group_node(id, name, parent_id), 
-    room_type:needed_room_type_id(id, name)
-  `,
+          id,
+          start_time,
+          end_time,
+          status,
+          date,
+          room_number,
+          need_computer,
+          needed_room_type_id,
+          group_node(name),
+          room_type:needed_room_type_id(name)
+        `,
           )
           .eq("date", selectedDate);
 
@@ -102,18 +107,14 @@ const KeysAllocator = () => {
 
         const formattedLessons = lessonsData.map((lesson) => ({
           id: lesson.id,
-          team_id: lesson.group_node?.id,
-          platoon_id: lesson.group_node?.parent_id, // Identifies the Platoon (פלוגה)
-          team_name: lesson.group_node?.name || "Unknown",
+          team_name: lesson.group_node?.name || "Unknown", // Replaced crew/pluga with unified name
           start_time: lesson.start_time,
           end_time: lesson.end_time,
-          room_type_id: lesson.needed_room_type_id,
-          room_type_name: lesson.room_type?.name || "Unknown",
+          room_type_needed: lesson.room_type?.name || "Unknown",
           needs_computers: lesson.need_computer,
           status: lesson.status,
           assigned_key: lesson.room_number,
           date: lesson.date,
-          is_special_request: lesson.status === "special", // Definition for special requests
         }));
 
         setLessons(formattedLessons);
@@ -319,12 +320,41 @@ const KeysAllocator = () => {
     }
   };
 
-  const handleManualAssign = (lessonId, roomNumber) => {
-    console.log("Manually assigning lesson", lessonId, "to room", roomNumber);
-    if (roomNumber === "unassign") {
-      alert("הקצאה בוטלה");
-    } else {
-      alert(`חדר ${roomNumber} הוקצה בהצלחה`);
+  const handleManualAssign = async (lessonId, roomNumber) => {
+    try {
+      const updateValue = roomNumber === "unassign" ? null : roomNumber;
+
+      const { error } = await supabase
+        .from("schedule_lessons")
+        .update({
+          room_number: updateValue,
+          status: roomNumber === "unassign" ? "pending" : "assigned",
+        })
+        .eq("id", lessonId);
+
+      if (error) throw error;
+
+      // Update local state
+      setLessons((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId
+            ? {
+                ...lesson,
+                assigned_key: updateValue,
+                status: roomNumber === "unassign" ? "pending" : "assigned",
+              }
+            : lesson,
+        ),
+      );
+
+      if (roomNumber === "unassign") {
+        alert("הקצאה בוטלה");
+      } else {
+        alert(`חדר ${roomNumber} הוקצה בהצלחה`);
+      }
+    } catch (error) {
+      console.error("Error updating assignment:", error);
+      alert("שגיאה בעדכון ההקצאה");
     }
   };
 
@@ -473,32 +503,6 @@ const KeysAllocator = () => {
         {/* Stats Cards */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={2}>
-            <Card sx={{ p: 2 }}>
-              <Typography variant="body2" sx={{ color: "#64748b", mb: 0.5 }}>
-                סה״כ שיעורים
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontWeight: 700, color: "#1e293b" }}
-              >
-                {lessons.length}
-              </Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2}>
-            <Card sx={{ p: 2, bgcolor: "#fefce8", borderColor: "#fde047" }}>
-              <Typography variant="body2" sx={{ color: "#ca8a04", mb: 0.5 }}>
-                ממתינים
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontWeight: 700, color: "#a16207" }}
-              >
-                {pendingCount}
-              </Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2}>
             <Card sx={{ p: 2, bgcolor: "#f0fdf4", borderColor: "#bbf7d0" }}>
               <Typography variant="body2" sx={{ color: "#16a34a", mb: 0.5 }}>
                 שובצו
@@ -507,7 +511,7 @@ const KeysAllocator = () => {
                 variant="h4"
                 sx={{ fontWeight: 700, color: "#15803d" }}
               >
-                {assignedCount}
+                {assignedCount}/{lessons.length}
               </Typography>
             </Card>
           </Grid>
