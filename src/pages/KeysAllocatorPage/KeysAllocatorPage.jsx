@@ -39,11 +39,6 @@ import { supabase } from "../../lib/supabaseClient";
 const KeysAllocator = () => {
   // TODO: make user real
   // Mock user data
-  const user = {
-    email: "admin@example.com",
-    roles: ["admin"],
-    platoon_name: "פלוגה א",
-  };
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const savedDate = localStorage.getItem("keysAllocatorDate");
@@ -54,8 +49,103 @@ const KeysAllocator = () => {
   const [isAllocating, setIsAllocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allKeys, setAllKeys] = useState([]);
-  const [lessons, setLessons] = useState([]);
+  const [lessons, setLessons] = useState([]); // TODO: make sure that role is קהד גדודי
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [user, setUser] = useState(null);
+  const [userGdudId, setUserGdudId] = useState(null);
+
+  // Helper function to find the user's גדוד (Gdud) in the hierarchy
+  const findUserGdud = async (groupId) => {
+    let currentId = groupId;
+    let currentGroup = null;
+
+    // Traverse up the hierarchy until we find a Gdud (group_type_id = 2)
+    while (currentId) {
+      const { data, error } = await supabase
+        .from("group_node")
+        .select("id, parent_id, group_type_id")
+        .eq("id", currentId)
+        .single();
+
+      if (error || !data) break;
+
+      currentGroup = data;
+      if (data.group_type_id === 2) {
+        // Found Gdud
+        console.log("Found user Gdud ID:", data.id);
+        return data.id;
+      }
+      currentId = data.parent_id;
+    }
+
+    return groupId; // Fallback to user's group if Gdud not found
+  };
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: authData, error } = await supabase.auth.getUser();
+      if (error || !authData?.user) return;
+
+      const { data, error: error2 } = await supabase
+        .from("users")
+        // Select from 'roles', using the relationship called 'user_roles'
+        .select(
+          `
+              full_name,
+              group_id,
+              roles!user_roles (
+              name
+              )
+          `,
+        )
+        .eq("id", authData.user.id)
+        .single();
+
+      if (!error2 && data) {
+        const userData = {
+          full_name: data.full_name,
+          group_id: data.group_id,
+          site_roles: data.roles?.map((r) => r.name) ?? [],
+        };
+        setUser(userData);
+
+        // Find the user's גדוד
+        if (data.group_id) {
+          const gdudId = await findUserGdud(data.group_id);
+          setUserGdudId(gdudId);
+        }
+      } else {
+        console.error("Error fetching user data:", error2);
+      }
+    };
+
+    fetchUser();
+  }, []);
+
+  // Helper function to check if a lesson's group belongs to the user's גדוד
+  const isLessonInUserGdud = async (groupId) => {
+    if (!userGdudId || !groupId) return false;
+
+    let currentId = groupId;
+
+    // Traverse up the hierarchy to check if we reach the user's גדוד
+    while (currentId) {
+      if (currentId === userGdudId) {
+        return true;
+      }
+
+      const { data, error } = await supabase
+        .from("group_node")
+        .select("parent_id")
+        .eq("id", currentId)
+        .single();
+
+      if (error || !data) break;
+      currentId = data.parent_id;
+    }
+
+    return false;
+  };
 
   // Save selected date to localStorage
   useEffect(() => {
@@ -107,8 +197,26 @@ const KeysAllocator = () => {
 
         if (lessonsError) throw lessonsError;
 
+        // Filter lessons to only include those under the user's גדוד and not beyond פלוגה level
+        let filteredLessonsData = lessonsData || [];
+        if (userGdudId) {
+          filteredLessonsData = [];
+          for (const lesson of lessonsData || []) {
+            // Exclude lessons at Bahad (1) or Gdud (2) level - only include Platoon (3) and Team (4)
+            if (
+              lesson.group_node?.group_type_id &&
+              lesson.group_node.group_type_id > 2
+            ) {
+              const isInGdud = await isLessonInUserGdud(lesson.group_node?.id);
+              if (isInGdud) {
+                filteredLessonsData.push(lesson);
+              }
+            }
+          }
+        }
+
         const formattedLessons =
-          lessonsData?.map((l) => {
+          filteredLessonsData?.map((l) => {
             const isPlatoon = l.group_node?.group_type_id === 3; // Company
             return {
               id: l.id,
@@ -137,9 +245,9 @@ const KeysAllocator = () => {
     };
 
     fetchData();
-  }, [selectedDate, refreshTrigger]);
+  }, [selectedDate, refreshTrigger, userGdudId]);
 
-  const isAdmin = user.roles.includes("admin");
+  const isAdmin = user?.site_roles?.includes("admin");
 
   const toggleKeySelection = (keyId) => {
     setSelectedKeys((prev) =>
@@ -311,24 +419,33 @@ const KeysAllocator = () => {
     }
   };
 
-  const handleDelete = (lessonId) => {
-    console.log("Deleting lesson:", lessonId);
-    alert("שיעור נמחק");
+  const handleDelete = async (lessonId) => {
+    if (window.confirm("האם למחוק שיעור זה?")) {
+      try {
+        const { error } = await supabase
+          .from("schedule_lessons")
+          .delete()
+          .eq("id", lessonId);
+
+        if (error) throw error;
+
+        // Update local state
+        setLessons((prev) => prev.filter((lesson) => lesson.id !== lessonId));
+
+        // Remove from selected lessons if it was selected
+        setSelectedLessons((prev) => prev.filter((id) => id !== lessonId));
+
+        alert("שיעור נמחק בהצלחה");
+      } catch (error) {
+        console.error("Error deleting lesson:", error);
+        alert("שגיאה במחיקת השיעור");
+      }
+    }
   };
 
   const handleDeleteAll = async () => {
-    /////// TODO: check if works
     if (window.confirm("האם למחוק את כל השיעורים?")) {
       try {
-        // Get all lesson IDs for the selected date
-        const lessonIds = lessons.map((l) => l.id);
-
-        if (lessonIds.length === 0) {
-          alert("אין שיעורים למחוק");
-          return;
-        }
-
-        // Delete all lessons for the selected date
         const { error } = await supabase
           .from("schedule_lessons")
           .delete()
@@ -341,6 +458,7 @@ const KeysAllocator = () => {
         setSelectedLessons([]);
 
         alert("כל השיעורים נמחקו בהצלחה");
+        setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
       } catch (error) {
         console.error("Error deleting lessons:", error);
         alert("שגיאה במחיקת השיעורים");
