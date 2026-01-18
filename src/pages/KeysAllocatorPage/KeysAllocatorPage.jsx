@@ -412,10 +412,32 @@ const KeysAllocator = () => {
     setSelectedKeys([]);
     setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
   };
-  const resetAllocations = () => {
+  const resetAllocations = async () => {
     if (window.confirm("האם למחוק את כל ההקצאות?")) {
-      console.log("Resetting allocations...");
-      alert("ההקצאות אופסו");
+      try {
+        const { error } = await supabase
+          .from("schedule_lessons")
+          .update({ room_number: null, status: "pending" })
+          .eq("date", selectedDate)
+          .neq("status", "pending");
+
+        if (error) throw error;
+
+        // Update local state
+        setLessons((prev) =>
+          prev.map((lesson) => ({
+            ...lesson,
+            assigned_key: null,
+            status: "pending",
+          })),
+        );
+
+        alert("כל ההקצאות אופסו בהצלחה");
+        setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
+      } catch (error) {
+        console.error("Error resetting allocations:", error);
+        alert("שגיאה בביטול ההקצאות");
+      }
     }
   };
 
@@ -888,9 +910,7 @@ const KeysAllocator = () => {
                           <TableCell align="center">
                             <Chip
                               label={
-                                lesson.room_type_needed === "פלוגתי"
-                                  ? "🏢"
-                                  : "🏠"
+                                lesson.room_type_name === "פלוגתי" ? "🏢" : "🏠"
                               }
                               size="small"
                               variant="outlined"
