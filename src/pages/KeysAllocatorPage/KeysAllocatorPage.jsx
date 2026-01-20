@@ -37,24 +37,22 @@ import {
 import { supabase } from "../../lib/supabaseClient";
 
 const KeysAllocator = () => {
-  // TODO: make user real
-  // Mock user data
-
   const [selectedDate, setSelectedDate] = useState(() => {
     const savedDate = localStorage.getItem("keysAllocatorDate");
     return savedDate || new Date().toISOString().split("T")[0];
   });
+  ``;
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [selectedLessons, setSelectedLessons] = useState([]);
   const [isAllocating, setIsAllocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allKeys, setAllKeys] = useState([]);
   const [lessons, setLessons] = useState([]); // TODO: make sure that role is קהד גדודי
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // TODO: fix bug where lessons refresh twice at start
   const [user, setUser] = useState(null);
   const [userGdudId, setUserGdudId] = useState(null);
 
-  // Helper function to find the user's גדוד (Gdud) in the hierarchy
+  // Helper function to find the user's Gdud in the hierarchy
   const findUserGdud = async (groupId) => {
     let currentId = groupId;
     let currentGroup = null;
@@ -291,7 +289,6 @@ const KeysAllocator = () => {
 
   const allocateKeys = async () => {
     // make sure is no התנגשויות
-    //TODO: prohibit גדוד level lessons
     // add דוץ
     setIsAllocating(true);
 
