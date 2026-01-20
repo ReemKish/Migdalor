@@ -38,6 +38,31 @@ import {
 import { useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
+
+function useKeys(initialKeys = []) {
+    const [state, setState] = useState(initialKeys);
+
+    const assign = (idx, group_id) => {
+        setState(prevState => {
+            const item = prevState[idx];
+            if (!item) return prevState;
+
+            // create a new array with updated item
+            item.assigned_group_id = group_id
+            const newState = [
+                ...prevState.slice(0, idx),
+                item,
+                ...prevState.slice(idx + 1)
+            ];
+
+            console.log("New Keys state: ", state);
+            return newState;
+        });
+    };
+
+    return [state, setState, assign];
+}
+
 const KeysManager = () => {
     const [user, setUser] = useState(null);
     useEffect(() => {
@@ -46,12 +71,17 @@ const KeysManager = () => {
             if (error) {
                 console.error('Error fetching user:', error);
             }
-            const userData = supabase.from('users').select('email, site_role, pluga').eq('id', user.id).single();
-            setUser({
-                email: userData.email,
-                site_role: userData.site_role,
-                platoon_name: userData.pluga,
-            });
+            const userReq = await supabase.from('users')
+                .select('full_name, group_node(id, name), user_roles(role_id, roles (id, name))')
+                .eq('id', user.id).single();
+
+            const userData = userReq.data;
+            console.log("User data: ", userData);
+
+            // setUser({
+            //     name: userData.full_name,
+            //     platoon_name: userData.group_node.name,
+            // });
         };
 
         fetchUser();
@@ -69,27 +99,46 @@ const KeysManager = () => {
         building: '',
     });
 
+    const [isDistributing, setIsDistributing] = useState(false);
+    const [groups, setGroups] = useState([]);
 
-    const [keys, setKeys] = useState([]);
+    const [keys, setKeys, assignKey] = useKeys([]);
+    const [buildings, setBuildings] = useState([]);
+
     useEffect(() => {
         const fetchKeys = async () => {
-            const { data, error } = await supabase.from('keysmanager_keys').select('*');
+            const { data, error } = await supabase.from('keysmanager_keys').select('*, group_node(id, name)');
             if (error) {
                 console.error('Error fetching keys:', error);
             } else {
+                console.log(data)
                 setKeys(data);
             }
         };
 
+        const fetchBuildings = async () => {
+            const { data, error } = await supabase.from("buildings").select("*");
+            if (error) {
+                console.error(error);
+            } else {
+                console.log("Buidlings: ", data);
+                setBuildings(data);
+            }
+        }
+
+        supabase.from("group_node")
+            .select("*, group_type(id, name)")
+            .then((groups) => {
+                console.log(groups)
+                setGroups(groups.data);
+            });
+
+
+
         fetchKeys();
+        fetchBuildings();
     }, []);
 
-    // TODO: Replace with real buildings
-    const buildings = [
-        { id: '1', name: 'בניין A', order: 1 },
-        { id: '2', name: 'בניין B', order: 2 },
-        { id: '3', name: 'בניין C', order: 3 },
-    ];
 
     const [todayLessons, setTodayLessons] = useState([]);
     const [wednesdayLessons, setWednesdayLessons] = useState([]);
@@ -131,7 +180,7 @@ const KeysManager = () => {
         fetchLessons();
     }, []);
 
-    if (user === null) return <p> Loading... </p>;
+    // if (user === null) return <p> Loading... </p>;
     const isAdmin = user?.site_role === 'admin' || true;
     // Get current key holder for a room
     const getCurrentHolder = (roomNumber) => {
@@ -146,6 +195,10 @@ const KeysManager = () => {
 
         return currentLesson ? currentLesson.crew_name : null;
     };
+
+    const getAssignedGroupName = (key) => {
+        return key.assigned_group_id ? key.group_node?.name : null
+    }
 
     // Get who's responsible for cleaning this room (Misdar)
     const getMisdarResponsible = (key) => {
@@ -180,7 +233,7 @@ const KeysManager = () => {
         return null;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!formData.room_number) {
             alert('אנא הזן מספר חדר');
             return;
@@ -189,13 +242,42 @@ const KeysManager = () => {
         if (editingKey) {
             console.log('Updating key:', editingKey.id, formData);
         } else {
+            const key = {
+                room_number: formData.room_number,
+                room_type: formData.room_type,
+                has_computers: formData.has_computers,
+                building_id: formData.building,
+                status: 'free',
+                manual_misdar_assignment: "",
+            };
+            const { error } = await supabase.from("keysmanager_keys").insert(key);
             console.log('Creating key:', formData);
+            if (error !== null) {
+                console.error(error);
+
+            }
         }
 
         setShowModal(false);
         setEditingKey(null);
         setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building: '' });
     };
+
+    const handleSaveDistribution = async () => {
+        await Promise.all(
+            keys.filter((k) => (k.assigned_group_id !== null)).map((k) => (
+                supabase.from("keysmanager_keys").update({
+                    assigned_group_id: k.assigned_group_id
+                }).eq("id", k.id)
+            ))
+        ).then(() => {
+            setIsDistributing(false)
+        })
+    }
+
+    const handleCancelDistribution = () => {
+
+    }
 
     const handleEdit = (key) => {
         setEditingKey(key);
@@ -296,6 +378,35 @@ const KeysManager = () => {
                         >
                             הוסף מפתח חדש
                         </Button>
+                        {!isDistributing ?
+                            (<Button
+                                variant="contained"
+                                startIcon={<PlusIcon />}
+                                onClick={() => setIsDistributing((true))}
+                                sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                            >
+                                חלק מפתחות
+                            </Button>) : (
+                                <>
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<PlusIcon />}
+                                        onClick={() => handleSaveDistribution()}
+                                        sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                                    >
+                                        שמור
+                                    </Button>
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<PlusIcon />}
+                                        onClick={() => setIsDistributing((false))}
+                                        sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                                    >
+                                        בטל
+                                    </Button>
+                                </>
+                            )
+                        }
                     </Box>
                 )}
 
@@ -329,6 +440,11 @@ const KeysManager = () => {
                                         פעולות
                                     </TableCell>
                                 )}
+                                {isDistributing && (
+                                    <TableCell align="center" sx={{ fontWeight: 600 }}>
+                                        מוקצא ל
+                                    </TableCell>
+                                )}
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -345,26 +461,19 @@ const KeysManager = () => {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                keys.map((key) => (
+                                keys.map((key, index) => (
                                     <TableRow key={key.id} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                                 <KeyIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
-                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                                    {key.room_number}
-                                                </Typography>
-                                            </Box>
-                                        </TableCell>
-                                        <TableCell align="center">
-                                            <Chip
-                                                label={key.room_type === 'פלוגתי' ? '🏢 פלוגתי' : '🏠 צוותי'}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{
-                                                    borderColor: key.room_type === 'פלוגתי' ? '#c084fc' : '#60a5fa',
-                                                    color: key.room_type === 'פלוגתי' ? '#7e22ce' : '#1d4ed8',
-                                                }}
-                                            />
+                                                <Typography variant="body2" sx={{ fontWeight: 500 }}> {key.room_number} </Typography> </Box> </TableCell> <TableCell align="center"> <Chip label={key.room_type === 'פלוגתי' ? '🏢 פלוגתי' : '🏠 צוותי'}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{
+                                                        borderColor: key.room_type === 'פלוגתי' ? '#c084fc' : '#60a5fa',
+                                                        color: key.room_type === 'פלוגתי' ? '#7e22ce' : '#1d4ed8',
+                                                    }}
+                                                />
                                         </TableCell>
                                         <TableCell align="center">
                                             {key.building ? (
@@ -391,18 +500,12 @@ const KeysManager = () => {
                                         </TableCell>
                                         <TableCell align="center">
                                             {(() => {
-                                                const holder = getCurrentHolder(key.room_number);
-                                                return holder ? (
-                                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                                                        <Chip
-                                                            label="תפוס"
-                                                            size="small"
-                                                            sx={{ bgcolor: '#fef3c7', color: '#92400e' }}
-                                                        />
-                                                        <Typography variant="caption" sx={{ color: '#475569' }}>
-                                                            {holder}
-                                                        </Typography>
-                                                    </Box>
+                                                const holder = getCurrentHolder(key.room_number) || getAssignedGroupName(key);
+                                                return holder ? (<Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}> <Chip label="תפוס" size="small" sx={{ bgcolor: '#fef3c7', color: '#92400e' }} />
+                                                    <Typography variant="caption" sx={{ color: '#475569' }}>
+                                                        {holder}
+                                                    </Typography>
+                                                </Box>
                                                 ) : (
                                                     <Chip
                                                         label="זמין"
@@ -471,6 +574,17 @@ const KeysManager = () => {
                                                 </Box>
                                             </TableCell>
                                         )}
+                                        {isDistributing ?
+                                            (<TableCell align="center">
+                                                {key.assigned_group_id > 1 ?
+                                                    <Button onClick={() => assignKey(index, null)}>Revoke</Button>
+                                                    :
+                                                    <Select value={key.group_id || 1} onChange={(e) => assignKey(index, e.target.value)}>
+                                                        {groups.filter((b) => (b.group_type.name == "Battalion")).map((b) => (<MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>))}
+                                                    </Select>
+                                                }
+                                            </TableCell>) : null
+                                        }
                                     </TableRow>
                                 ))
                             )}
@@ -594,6 +708,7 @@ const KeysManager = () => {
                             >
                                 <MenuItem value="צוותי">צוותי 🏠</MenuItem>
                                 <MenuItem value="פלוגתי">פלוגתי 🏢</MenuItem>
+                                <MenuItem value="פלוגתי">"דו-צוותי"</MenuItem>
                             </Select>
                         </FormControl>
 
@@ -618,7 +733,7 @@ const KeysManager = () => {
                             >
                                 <MenuItem value="">בחר אזור...</MenuItem>
                                 {buildings.map((building) => (
-                                    <MenuItem key={building.id} value={building.name}>
+                                    <MenuItem key={building.id} value={building.id}>
                                         {building.name}
                                     </MenuItem>
                                 ))}
