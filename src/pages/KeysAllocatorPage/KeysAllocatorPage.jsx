@@ -161,7 +161,7 @@ const KeysAllocator = () => {
         const { data: keysData, error: keysError } = await supabase
           .from("keysmanager_keys")
           .select(
-            `id, room_number, room_type_id, has_computers, room_type(name)`,
+            `id, room_number, room_type_id, has_computers, building_id, room_type(name)`,
           )
           .eq("status", "available");
 
@@ -172,6 +172,7 @@ const KeysAllocator = () => {
           room_number: key.room_number,
           room_type: key.room_type?.name || "unknown",
           has_computers: key.has_computers,
+          building_id: key.building_id,
         }));
 
         setAllKeys(formattedKeys);
@@ -319,8 +320,6 @@ const KeysAllocator = () => {
     const sessionAllocations = [];
 
     for (const lesson of sortedLessons) {
-      if (availableKeys.length === 0) break;
-
       let bestKey = null;
       let maxScore = -Infinity;
 
@@ -381,6 +380,30 @@ const KeysAllocator = () => {
         );
         if (platoonMatch) score += 1200;
 
+        // העדפה לבניין זהה לשיעורים קודמים של הצוות
+        const teamInBuilding = lessons.find((l) => {
+          if (l.team_id !== lesson.team_id || !l.assigned_key) return false;
+          const assignedKey = allKeys.find(
+            (k) => k.room_number === l.assigned_key,
+          );
+          return assignedKey && assignedKey.building_id === key.building_id;
+        });
+        if (teamInBuilding) score += 2000;
+
+        // העדפה לבניין זהה לשיעורים קודמים של הפלוגה
+        const platoonInBuilding = lessons.find((l) => {
+          if (
+            l.effective_platoon_id !== lesson.effective_platoon_id ||
+            !l.assigned_key
+          )
+            return false;
+          const assignedKey = allKeys.find(
+            (k) => k.room_number === l.assigned_key,
+          );
+          return assignedKey && assignedKey.building_id === key.building_id;
+        });
+        if (platoonInBuilding) score += 800;
+
         if (score > maxScore) {
           maxScore = score;
           bestKey = key;
@@ -394,7 +417,6 @@ const KeysAllocator = () => {
           start_time: lesson.start_time,
           end_time: lesson.end_time,
         });
-        availableKeys = availableKeys.filter((k) => k.id !== bestKey.id);
       }
     }
 
@@ -883,6 +905,7 @@ const KeysAllocator = () => {
                             sx={{
                               fontFamily: "monospace",
                               fontSize: "0.875rem",
+                              direction: "ltr",
                             }}
                           >
                             {lesson.start_time?.slice(0, 5)} -{" "}
