@@ -296,7 +296,7 @@ const KeysAllocator = () => {
     const lessonsToAllocate =
       selectedLessons.length > 0
         ? lessons.filter((l) => selectedLessons.includes(l.id))
-        : lessons.filter((l) => l.status === "pending");
+        : lessons.filter((l) => l.status === 1); // 1 = pending
 
     let availableKeys = allKeys.filter((k) => selectedKeys.includes(k.id));
 
@@ -402,7 +402,7 @@ const KeysAllocator = () => {
     for (const up of finalUpdates) {
       await supabase
         .from("schedule_lessons")
-        .update({ room_number: up.room_number, status: "assigned" })
+        .update({ room_number: up.room_number, status: 2 }) // 2 = assigned
         .eq("id", up.id);
     }
 
@@ -417,18 +417,16 @@ const KeysAllocator = () => {
       try {
         const { error } = await supabase
           .from("schedule_lessons")
-          .update({ room_number: null, status: "pending" })
+          .update({ room_number: null, status: 1 }) // 1 = pending
           .eq("date", selectedDate)
-          .neq("status", "pending");
-
-        if (error) throw error;
+          .neq("status", 1);
 
         // Update local state
         setLessons((prev) =>
           prev.map((lesson) => ({
             ...lesson,
             assigned_key: null,
-            status: "pending",
+            status: 1, // 1 = pending
           })),
         );
 
@@ -496,7 +494,7 @@ const KeysAllocator = () => {
         .from("schedule_lessons")
         .update({
           room_number: updateValue,
-          status: roomNumber === "unassign" ? "pending" : "assigned",
+          status: roomNumber === "unassign" ? 1 : 2, // 1 = pending, 2 = assigned
         })
         .eq("id", lessonId);
 
@@ -509,7 +507,7 @@ const KeysAllocator = () => {
             ? {
                 ...lesson,
                 assigned_key: updateValue,
-                status: roomNumber === "unassign" ? "pending" : "assigned",
+                status: roomNumber === "unassign" ? 1 : 2, // 1 = pending, 2 = assigned
               }
             : lesson,
         ),
@@ -531,8 +529,8 @@ const KeysAllocator = () => {
     a.start_time.localeCompare(b.start_time),
   );
 
-  const pendingCount = lessons.filter((l) => l.status === "pending").length;
-  const assignedCount = lessons.filter((l) => l.status === "assigned").length;
+  const pendingCount = lessons.filter((l) => l.status === 1).length; // 1 = pending
+  const assignedCount = lessons.filter((l) => l.status === 2).length; // 2 = assigned
   // const specialRequestsCount = specialRequests.length;
   ///////////////////////////////////////////////////////////////////
   if (!user) {
@@ -922,7 +920,7 @@ const KeysAllocator = () => {
                             </Typography>
                           </TableCell>
                           <TableCell align="center">
-                            {lesson.status === "assigned" ? (
+                            {lesson.status === 2 ? ( // 2 = assigned
                               <CheckCircleIcon
                                 sx={{ fontSize: 16, color: "#16a34a" }}
                               />
