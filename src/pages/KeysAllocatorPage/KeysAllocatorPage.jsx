@@ -161,7 +161,7 @@ const KeysAllocator = () => {
         const { data: keysData, error: keysError } = await supabase
           .from("keysmanager_keys")
           .select(
-            `id, room_number, room_type_id, has_computers, building_id, room_type(name)`,
+            `id, room_number, room_type_id, has_computers, building_id, room_type(name), building:building_id(name)`,
           )
           .eq("status", "available");
 
@@ -173,6 +173,7 @@ const KeysAllocator = () => {
           room_type: key.room_type?.name || "unknown",
           has_computers: key.has_computers,
           building_id: key.building_id,
+          building_name: key.building?.name || "unknown",
         }));
 
         setAllKeys(formattedKeys);
@@ -798,6 +799,12 @@ const KeysAllocator = () => {
                           variant="outlined"
                           sx={{ fontSize: "0.75rem" }}
                         />
+                        <Chip
+                          label={`📍 ${key.building_name}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: "0.75rem" }}
+                        />
                         {key.has_computers && (
                           <Chip label="💻" size="small" variant="outlined" />
                         )}
@@ -1057,10 +1064,10 @@ const KeysAllocator = () => {
             <li>חדרים פלוגתיים משובצים ראשונים</li>
             <li>שיעורים שדורשים מחשבים מקבלים עדיפות על פני אלו שלא</li>
             <li>בקשות לחדרים צוותיים עשויות לקבל שדרוג לפלוגתי במידת הצורך</li>
-            <li>
+            {/* <li>
               <strong>בקשות מיוחדות מקבלות עדיפות נמוכה</strong> - משובצות
               אחרונות
-            </li>
+            </li> */}
           </Box>
         </Alert>
       </Container>
