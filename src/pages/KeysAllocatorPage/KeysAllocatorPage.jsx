@@ -305,6 +305,36 @@ const KeysAllocator = () => {
       return;
     }
 
+    // Fetch previous day's lessons to get keys assigned to teams/platoons
+    const previousDate = new Date(selectedDate);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previousDateStr = previousDate.toISOString().split("T")[0];
+
+    const { data: previousDayLessons } = await supabase
+      .from("schedule_lessons")
+      .select(
+        `
+        group_node(id, group_type_id, parent_id),
+        room_number
+      `,
+      )
+      .eq("date", previousDateStr)
+      .eq("status", 2); // Only assigned lessons
+
+    // Create a map of team/platoon to their previous day's room
+    const previousKeyMap = {};
+    if (previousDayLessons) {
+      for (const lesson of previousDayLessons) {
+        if (!lesson.room_number || !lesson.group_node) continue;
+        const isPlatoon = lesson.group_node.group_type_id === 3;
+        const groupId = isPlatoon
+          ? lesson.group_node.id
+          : lesson.group_node.parent_id;
+        const key = isPlatoon ? `platoon_${groupId}` : `team_${groupId}`;
+        previousKeyMap[key] = lesson.room_number;
+      }
+    }
+
     // מיון עדיפויות
     const sortedLessons = [...lessonsToAllocate].sort((a, b) => {
       if (a.room_type_name !== b.room_type_name)
@@ -362,6 +392,15 @@ const KeysAllocator = () => {
         )
           score += 400;
         else score -= 10000;
+
+        // העדפה גבוהה - אותו חדר שהצוות היה בו ביום הקודם
+        const previousTeamKey = previousKeyMap[`team_${lesson.team_id}`];
+        if (previousTeamKey === key.room_number) score += 5000;
+
+        // העדפה גבוהה - אותו חדר שהפלוגה היתה בו ביום הקודם
+        const previousPlatoonKey =
+          previousKeyMap[`platoon_${lesson.effective_platoon_id}`];
+        if (previousPlatoonKey === key.room_number) score += 4500;
 
         // שימור כיתה לצוות
         const teamMatch = lessons.find(
