@@ -28,7 +28,9 @@
     "react-scripts": "5.0.1",
     "@fullcalendar/react": "^6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
-    "@fullcalendar/interaction": "^6.1.20"
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/core": "^6.1.8",
+    "date-fns": "^4.1.0"
   },
   "browserslist": {
     "production": [
