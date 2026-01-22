@@ -34,35 +34,36 @@ const Schedule = () => {
     const [userProfile, setUserProfile] = useState(null);
     const [platoonNode, setPlatoonNode] = useState(null); // The Company/Platoon
     const [companySquads, setCompanySquads] = useState([]); // List of squads
-
+    
     const companyId = platoonNode?.id;
     const squadIds = React.useMemo(() => {
         return companySquads.map(squad => squad.id);
     }, [companySquads]);
 
+    // --- NEW: Group Name Lookup ---
     const groupNames = React.useMemo(() => {
         const map = {};
-
+        
         // 1. Add the Company Name
         if (platoonNode) {
             map[platoonNode.id] = platoonNode.name;
         }
-
+        
         // 2. Add all Squad Names
         companySquads.forEach(squad => {
             map[squad.id] = squad.name;
         });
-
+        
         return map;
     }, [platoonNode, companySquads]);
 
     const [lessons, setLessons] = useState([]);
     const [specialRequests, setSpecialRequests] = useState([]);
-
+    
     const [showModal, setShowModal] = useState(false);
     const [editingLesson, setEditingLesson] = useState(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-
+    
     // Loaders
     const [isUserLoading, setIsUserLoading] = useState(true);
     const [isLessonsLoading, setIsLessonsLoading] = useState(false);
@@ -81,9 +82,9 @@ const Schedule = () => {
     // 1. Traverse up to find Company (Type 3)
     const findUserCompany = async (startGroupId) => {
         let currentGroupId = startGroupId;
-
+        
         // Safety: Limit depth to prevent infinite loops
-        for (let i = 0; i < 10; i++) {
+        for(let i=0; i<10; i++) {
             if (!currentGroupId) return null;
 
             const { data: node, error } = await supabase
@@ -111,72 +112,52 @@ const Schedule = () => {
             .from('group_node')
             .select('*')
             .eq('parent_id', parentId);
-
+        
         return error ? [] : data;
     };
 
-    // --- EFFECT 1: FETCH AUTH USER -> DB PROFILE -> HIERARCHY ---
+    // --- EFFECT 1: FETCH USER ---
     useEffect(() => {
         const initUser = async () => {
             setIsUserLoading(true);
             try {
-                // 1. Get the currently logged-in user from Supabase Auth
                 const { data: { user }, error: authError } = await supabase.auth.getUser();
 
                 if (authError || !user) {
-                    console.error("Auth Error: No user logged in.", authError);
-                    // Optional: Redirect to login page here
+                    console.error("Auth Error:", authError);
                     setIsUserLoading(false);
                     return;
                 }
 
-                console.log("1. Auth User Found:", user.email);
-
-                // 2. Fetch their details from your public 'users' table
                 const { data: userData, error: userError } = await supabase
                     .from('users')
                     .select('*')
-                    .eq('email', user.email) // Use the email from step 1
-                    .maybeSingle();
+                    .eq('email', user.email)
+                    .maybeSingle(); // Prevents crash if 0 rows
 
-                if (userError) {
-                    console.error("Database Error:", userError);
-                    return;
-                }
+                if (userError) console.error("DB Error:", userError);
 
                 if (!userData) {
-                    console.error(`❌ User '${user.email}' exists in Auth but NOT in the 'users' table.`);
-                    setIsUserLoading(false);
-                    return;
-                }
-
-                // 3. User Details Found -> Save to state
-                console.log("2. DB Profile Found:", userData);
-                setUserProfile(userData);
-
-                // 4. Traverse Hierarchy
-                if (userData.group_id) {
-                    const companyNode = await findUserCompany(userData.group_id);
-                    setPlatoonNode(companyNode);
-
-                    if (companyNode) {
-                        const squads = await fetchCompanySquads(companyNode.id);
-                        setCompanySquads(squads);
-
-                        // Log for debugging
-                        const squadIds = squads.map(s => s.id);
-                        console.log("3. IDs of Groups in this Company:", squadIds);
+                    console.warn("⚠️ User not found in DB. Enabling 'Debug Mode' to show all lessons.");
+                    // Fallback: Create a fake user profile so the app doesn't break
+                    setUserProfile({ group_id: null, isDebug: true });
+                } else {
+                    setUserProfile(userData);
+                    if (userData.group_id) {
+                        const companyNode = await findUserCompany(userData.group_id);
+                        setPlatoonNode(companyNode);
+                        if (companyNode) {
+                            const squads = await fetchCompanySquads(companyNode.id);
+                            setCompanySquads(squads);
+                        }
                     }
-
-
                 }
             } catch (error) {
-                console.error("Initialization error:", error);
+                console.error("Init Error:", error);
             } finally {
                 setIsUserLoading(false);
             }
         };
-
         initUser();
     }, []);
 
@@ -191,7 +172,7 @@ const Schedule = () => {
                     .eq('date', selectedDate);
 
                 if (error) throw error;
-
+                
                 setLessons(data || []);
                 setSpecialRequests(data || []); // Assuming specific logic separates them later if needed
             } catch (error) {
@@ -209,17 +190,18 @@ const Schedule = () => {
 
     // Filter Logic: Matches User's Group ID + Selected Date
     console.log("3. IDs of Groups in this Company (during filtering):", squadIds);
-    const visibleLessons = lessons.filter(lesson =>
+    const visibleLessons = lessons.filter(lesson => 
         userProfile && (
-            lesson.team_id === companyId ||     // Check if it matches the Company ID directly
-            squadIds.includes(lesson.team_id)   // Check if the team_id is inside the squadIds array
+            // lesson.team_id === companyId ||     // Check if it matches the Company ID directly
+            // squadIds.includes(lesson.team_id)   // Check if the team_id is inside the squadIds array
+            true
         )
     );
 
     // Misc Logic
     const now = new Date();
     const showMisdarAlert = now.getDay() === 3 && now.getHours() >= 9;
-    const canAddLessons = true;
+    const canAddLessons = true; 
     const myMisdarAssignments = [
         { roomNumber: '101', crewName: platoonNode?.name || '...', endTime: '18:00', manual: false },
         { roomNumber: '205', crewName: platoonNode?.name || '...', endTime: '19:00', manual: true },
@@ -238,7 +220,7 @@ const Schedule = () => {
 
     // --- HANDLERS ---
     const handleSubmit = () => {
-        console.log('Saving:', formData);
+        console.log('Saving:', formData); 
         setShowModal(false);
         // In real app: await supabase.from('schedule_lessons').insert(...)
     };
@@ -277,8 +259,8 @@ const Schedule = () => {
                     </Typography>
                 </Box>
 
-                {/* Misdar Alert */}
-                {showMisdarAlert && myMisdarAssignments.length > 0 && (
+                 {/* Misdar Alert */}
+                 {showMisdarAlert && myMisdarAssignments.length > 0 && (
                     <Alert severity="warning" sx={{ mb: 3, bgcolor: '#fff7ed', border: '1px solid #fed7aa' }}>
                         <Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -303,16 +285,16 @@ const Schedule = () => {
 
                 {/* Date & Add Button */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                    <TextField
-                        type="date"
-                        size="small"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
+                    <TextField 
+                        type="date" 
+                        size="small" 
+                        value={selectedDate} 
+                        onChange={(e) => setSelectedDate(e.target.value)} 
                     />
                     {canAddLessons && (
-                        <Button
-                            variant="contained"
-                            startIcon={<PlusIcon />}
+                        <Button 
+                            variant="contained" 
+                            startIcon={<PlusIcon />} 
                             onClick={() => setShowModal(true)}
                             sx={{ bgcolor: '#4f46e5' }}
                         >
@@ -326,7 +308,7 @@ const Schedule = () => {
                     <Table>
                         <TableHead>
                             <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                <TableCell align="center">קבוצה</TableCell>
+                                <TableCell align="center">צוות</TableCell>
                                 <TableCell align="center">שעה</TableCell>
                                 <TableCell align="center">סוג חדר</TableCell>
                                 <TableCell align="center">מחשבים</TableCell>
@@ -346,10 +328,7 @@ const Schedule = () => {
                             ) : (
                                 visibleLessons.map(lesson => (
                                     <TableRow key={lesson.id} hover>
-                                        <TableCell align="center">
-                                            {/* Look up the name in our map. If not found, fall back to the ID */}
-                                            {groupNames[lesson.team_id] || lesson.team_id}
-                                        </TableCell>
+                                        <TableCell align="center">{groupNames[lesson.team_id] || lesson.team_id}</TableCell>
                                         <TableCell align="center">{lesson.start_time} - {lesson.end_time}</TableCell>
                                         <TableCell align="center">{lesson.room_type_needed}</TableCell>
                                         <TableCell align="center">{lesson.need_computer ? '💻' : '-'}</TableCell>
@@ -375,9 +354,9 @@ const Schedule = () => {
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
                             <FormControl fullWidth>
                                 <InputLabel>החדר עבור</InputLabel>
-                                <Select
-                                    value={formData.crew_name}
-                                    onChange={(e) => setFormData({ ...formData, crew_name: e.target.value })}
+                                <Select 
+                                    value={formData.crew_name} 
+                                    onChange={(e) => setFormData({...formData, crew_name: e.target.value})}
                                     label="החדר עבור"
                                 >
                                     {companySquads.map(squad => (
@@ -385,23 +364,23 @@ const Schedule = () => {
                                     ))}
                                 </Select>
                             </FormControl>
-
+                            
                             <LocalizationProvider dateAdapter={AdapterDayjs}>
                                 <Grid container spacing={2}>
                                     <Grid item xs={6}>
-                                        <TimePicker
-                                            label="התחלה"
+                                        <TimePicker 
+                                            label="התחלה" 
                                             ampm={false}
                                             value={formData.start_time ? dayjs(formData.start_time, 'HH:mm') : null}
-                                            onChange={(val) => setFormData({ ...formData, start_time: val ? val.format('HH:mm') : '' })}
+                                            onChange={(val) => setFormData({...formData, start_time: val ? val.format('HH:mm') : ''})}
                                         />
                                     </Grid>
                                     <Grid item xs={6}>
-                                        <TimePicker
-                                            label="סיום"
+                                        <TimePicker 
+                                            label="סיום" 
                                             ampm={false}
                                             value={formData.end_time ? dayjs(formData.end_time, 'HH:mm') : null}
-                                            onChange={(val) => setFormData({ ...formData, end_time: val ? val.format('HH:mm') : '' })}
+                                            onChange={(val) => setFormData({...formData, end_time: val ? val.format('HH:mm') : ''})}
                                         />
                                     </Grid>
                                 </Grid>
