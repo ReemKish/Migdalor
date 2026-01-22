@@ -23,6 +23,7 @@ import {
   TableContainer,
   CircularProgress,
   Alert,
+  Snackbar,
 } from "@mui/material";
 import {
   AutoFixHigh as Wand2Icon,
@@ -41,23 +42,26 @@ const KeysAllocator = () => {
     const savedDate = localStorage.getItem("keysAllocatorDate");
     return savedDate || new Date().toISOString().split("T")[0];
   });
-  ``;
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [selectedLessons, setSelectedLessons] = useState([]);
   const [isAllocating, setIsAllocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allKeys, setAllKeys] = useState([]);
-  const [lessons, setLessons] = useState([]); // TODO: make sure that role is קהד גדודי
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // TODO: fix bug where lessons refresh twice at start
+  const [lessons, setLessons] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [user, setUser] = useState(null);
   const [userGdudId, setUserGdudId] = useState(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "info",
+  });
 
   // Helper function to find the user's Gdud in the hierarchy
   const findUserGdud = async (groupId) => {
     let currentId = groupId;
     let currentGroup = null;
 
-    // Traverse up the hierarchy until we find a Gdud (group_type_id = 2)
     while (currentId) {
       const { data, error } = await supabase
         .from("group_node")
@@ -107,7 +111,6 @@ const KeysAllocator = () => {
         };
         setUser(userData);
 
-        // Find the user's גדוד
         if (data.group_id) {
           const gdudId = await findUserGdud(data.group_id);
           setUserGdudId(gdudId);
@@ -119,6 +122,15 @@ const KeysAllocator = () => {
 
     fetchUser();
   }, []);
+
+  // Helper function to show snackbar notifications
+  const showSnackbar = (message, severity = "info") => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const closeSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   // Helper function to check if a lesson's group belongs to the user's גדוד
   const isLessonInUserGdud = async (groupId) => {
@@ -288,7 +300,6 @@ const KeysAllocator = () => {
   };
 
   const allocateKeys = async () => {
-    // make sure is no התנגשויות
     // add דוץ
     setIsAllocating(true);
 
@@ -301,7 +312,7 @@ const KeysAllocator = () => {
 
     if (lessonsToAllocate.length === 0 || availableKeys.length === 0) {
       setIsAllocating(false);
-      alert("אין נתונים לשיבוץ");
+      showSnackbar("אין נתונים לשיבוץ", "warning");
       return;
     }
 
@@ -385,13 +396,20 @@ const KeysAllocator = () => {
         let score = 0;
 
         // בדיקת התאמת סוג חדר
-        if (key.room_type === lesson.room_type_name) score += 1000;
-        else if (
-          lesson.room_type_name === "צוותי" &&
+        if (key.room_type === lesson.room_type_name) {
+          // Exact match
+          score += 1000;
+        } else if (
+          (lesson.room_type_name === "צוותי" ||
+            lesson.room_type_name === "דוצ") &&
           key.room_type === "פלוגתי"
-        )
+        ) {
+          // צוותי or דוצ lessons can use פלוגתי rooms
           score += 400;
-        else score -= 10000;
+        } else {
+          // No match
+          score -= 10000;
+        }
 
         // העדפה גבוהה - אותו חדר שהצוות היה בו ביום הקודם
         const previousTeamKey = previousKeyMap[`team_${lesson.team_id}`];
@@ -465,7 +483,16 @@ const KeysAllocator = () => {
         .eq("id", up.id);
     }
 
-    alert(`הוקצו בהצלחה ${finalUpdates.length} שיעורים`);
+    const allocatedCount = finalUpdates.length;
+    const totalCount = lessonsToAllocate.length;
+    if (allocatedCount === totalCount) {
+      showSnackbar(`הוקצו בהצלחה ${allocatedCount} שיעורים`, "success");
+    } else {
+      showSnackbar(
+        `הוקצו בהצלחה ${allocatedCount} מתוך ${totalCount} שיעורים. בשאר לא נמצאו מפתחות מתאימים.`,
+        "warning",
+      );
+    }
     setIsAllocating(false);
     setSelectedLessons([]);
     setSelectedKeys([]);
@@ -489,11 +516,11 @@ const KeysAllocator = () => {
           })),
         );
 
-        alert("כל ההקצאות אופסו בהצלחה");
+        showSnackbar("כל ההקצאות אופסו בהצלחה", "success");
         setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
       } catch (error) {
         console.error("Error resetting allocations:", error);
-        alert("שגיאה בביטול ההקצאות");
+        showSnackbar("שגיאה בביטול ההקצאות", "error");
       }
     }
   };
@@ -514,10 +541,10 @@ const KeysAllocator = () => {
         // Remove from selected lessons if it was selected
         setSelectedLessons((prev) => prev.filter((id) => id !== lessonId));
 
-        alert("שיעור נמחק בהצלחה");
+        showSnackbar("שיעור נמחק בהצלחה", "success");
       } catch (error) {
         console.error("Error deleting lesson:", error);
-        alert("שגיאה במחיקת השיעור");
+        showSnackbar("שגיאה במחיקת השיעור", "error");
       }
     }
   };
@@ -536,24 +563,82 @@ const KeysAllocator = () => {
         setLessons([]);
         setSelectedLessons([]);
 
-        alert("כל השיעורים נמחקו בהצלחה");
+        showSnackbar("כל השיעורים נמחקו בהצלחה", "success");
         setRefreshTrigger((prev) => prev + 1); // Trigger data refresh
       } catch (error) {
         console.error("Error deleting lessons:", error);
-        alert("שגיאה במחיקת השיעורים");
+        showSnackbar("שגיאה במחיקת השיעורים", "error");
       }
     }
   };
 
   const handleManualAssign = async (lessonId, roomNumber) => {
     try {
-      const updateValue = roomNumber === "unassign" ? null : roomNumber;
+      // If unassigning, no need to check for collisions
+      if (roomNumber === "unassign") {
+        const { error } = await supabase
+          .from("schedule_lessons")
+          .update({
+            room_number: null,
+            status: 1, // 1 = pending
+          })
+          .eq("id", lessonId);
+
+        if (error) throw error;
+
+        // Update local state
+        setLessons((prev) =>
+          prev.map((lesson) =>
+            lesson.id === lessonId
+              ? {
+                  ...lesson,
+                  assigned_key: null,
+                  status: 1, // 1 = pending
+                }
+              : lesson,
+          ),
+        );
+
+        showSnackbar("הקצאה בוטלה", "info");
+        return;
+      }
+
+      // Check for collision with existing assignments
+      const currentLesson = lessons.find((l) => l.id === lessonId);
+      if (!currentLesson) {
+        showSnackbar("שיעור לא נמצא", "error");
+        return;
+      }
+
+      const collision = lessons.some((l) => {
+        // Don't check against the lesson itself
+        if (l.id === lessonId) return false;
+
+        // Only check if room is already assigned to this lesson
+        if (l.assigned_key !== roomNumber) return false;
+
+        // Check if time ranges overlap
+        return timesOverlap(
+          currentLesson.start_time,
+          currentLesson.end_time,
+          l.start_time,
+          l.end_time,
+        );
+      });
+
+      if (collision) {
+        showSnackbar(
+          `התנגשות! חדר ${roomNumber} כבר הוקצה לשיעור אחר באותו הזמן`,
+          "error",
+        );
+        return;
+      }
 
       const { error } = await supabase
         .from("schedule_lessons")
         .update({
-          room_number: updateValue,
-          status: roomNumber === "unassign" ? 1 : 2, // 1 = pending, 2 = assigned
+          room_number: roomNumber,
+          status: 2, // 2 = assigned
         })
         .eq("id", lessonId);
 
@@ -565,21 +650,17 @@ const KeysAllocator = () => {
           lesson.id === lessonId
             ? {
                 ...lesson,
-                assigned_key: updateValue,
-                status: roomNumber === "unassign" ? 1 : 2, // 1 = pending, 2 = assigned
+                assigned_key: roomNumber,
+                status: 2, // 2 = assigned
               }
             : lesson,
         ),
       );
 
-      if (roomNumber === "unassign") {
-        alert("הקצאה בוטלה");
-      } else {
-        alert(`חדר ${roomNumber} הוקצה בהצלחה`);
-      }
+      showSnackbar(`חדר ${roomNumber} הוקצה בהצלחה`, "success");
     } catch (error) {
       console.error("Error updating assignment:", error);
-      alert("שגיאה בעדכון ההקצאה");
+      showSnackbar("שגיאה בעדכון ההקצאה", "error");
     }
   };
 
@@ -1107,6 +1188,22 @@ const KeysAllocator = () => {
           </Box>
         </Alert>
       </Container>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Alert
+          onClose={closeSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
