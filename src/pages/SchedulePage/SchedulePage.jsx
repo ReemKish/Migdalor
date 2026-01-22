@@ -14,10 +14,10 @@ import {
     FormControl,
     InputLabel,
     Table,
-    TableBody,
-    TableCell,
     TableHead,
     TableRow,
+    TableCell,
+    TableBody,
     Checkbox,
     FormControlLabel,
     Chip,
@@ -29,6 +29,10 @@ import {
     Alert,
     CircularProgress,
 } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { TimePicker } from '@mui/x-date-pickers/TimePicker';
+import dayjs from 'dayjs';
 
 import AddIcon from '@mui/icons-material/Add';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -56,6 +60,7 @@ const Schedule = () => {
         squad_name: 'צוות 1',
         positions: ['קה״ד פלוגתי'],
         role: 'user',
+        team_id: '101' // <--- The ID of the user's team
     };
 
     const [showModal, setShowModal] = useState(false);
@@ -64,6 +69,21 @@ const Schedule = () => {
         new Date().toISOString().split('T')[0]
     );
     const [isLoading] = useState(false);
+    // ... inside the Schedule component
+
+    const now = new Date();
+    // JavaScript counts days from 0 (Sunday) to 6 (Saturday). Wednesday is 3.
+    const isWednesday = now.getDay() === 3;
+    // Uncomment this to test the code
+    // const isWednesday = true;
+    // Check if the current hour is 9 or later
+    const isAfterNine = now.getHours() >= 9;
+
+    // The Logic: Show the box ONLY if it's Wednesday AND after 09:00
+    const showMisdarAlert = isWednesday && isAfterNine;
+
+    // Uncomment to force-show while developing/testing!
+    // const showMisdarAlert = true;
 
     const [formData, setFormData] = useState({
         crew_name: '',
@@ -77,7 +97,7 @@ const Schedule = () => {
         squad_count: '',
         selected_squads: [],
     });
-
+    
     // Mock data
     const crews = [
         { id: '1', name: 'פלוגה א', order: 1 },
@@ -93,10 +113,26 @@ const Schedule = () => {
         { id: '5', squad_number: 'צוות 2', platoon_name: 'פלוגה ב', order: 5 },
     ];
 
+
+    // const lessons = supabase
+    //     .from('schedule_lessons')
+    //     .select('created_at',
+    //         'start_time',
+    //         'end_time',
+    //         'notes',
+    //         'status',
+    //         'need_computer',
+    //         'date',
+    //         'room_number',
+    //         'team_id',
+    //         'needed_room_type_id')
+    //     .eq('date', selectedDate)
+    // Mock data (in real use should be pulled from DB and replaced with the code above)
     const lessons = [
         {
             id: '1',
             crew_name: 'צוות 1',
+            team_id: '101', // <--- MATCHES USER (Will be shown)
             platoon_name: 'פלוגה א',
             start_time: '08:00',
             end_time: '10:00',
@@ -105,12 +141,13 @@ const Schedule = () => {
             notes: 'שיעור תכנות',
             status: 'assigned',
             assigned_key: '101',
-            date: selectedDate,
+            date: '2026-01-17',
             crew_manager: user.email,
         },
         {
             id: '2',
             crew_name: 'צוות 2',
+            team_id: '102', // <--- DOES NOT MATCH (Will be hidden)
             platoon_name: 'פלוגה א',
             start_time: '10:30',
             end_time: '12:00',
@@ -118,23 +155,61 @@ const Schedule = () => {
             needs_computers: false,
             notes: '',
             status: 'pending',
-            date: selectedDate,
+            date: '2026-01-17',
             crew_manager: user.email,
         },
     ];
 
+    // const specialRequests = supabase
+    //     .from('schedule_lessons')
+    //     .select('created_at',
+    //         'start_time',
+    //         'end_time',
+    //         'notes',
+    //         'status',
+    //         'need_computer',
+    //         'date',
+    //         'room_number',
+    //         'team_id',
+    //         'needed_room_type_id')
+    //     .eq('date', selectedDate)
+    // Mock data (in real use should be pulled from DB and replaced with the code above)
     const specialRequests = [
         {
             id: '1',
             crew_name: 'צוות 3',
+            team_id: '103', // <--- DOES NOT MATCH (Will be hidden)
             platoon_name: 'פלוגה א',
             start_time: '14:00',
             end_time: '16:00',
             preferred_type: 'any',
             notes: 'בקשה מיוחדת לחדר',
-            date: selectedDate,
+            date: '2026-01-17',
         },
+        {
+            id: '2',
+            crew_name: 'צוות 1',
+            team_id: '101', // <--- MATCHES USER (Will be shown)
+            platoon_name: 'פלוגה א',
+            start_time: '18:00',
+            end_time: '19:00',
+            preferred_type: 'any',
+            notes: 'ערב צוות',
+            date: '2026-01-18',
+        }
     ];
+
+    const visibleLessons = lessons.filter(lesson =>
+        lesson.team_id === user.team_id && lesson.date === selectedDate
+    );
+
+    // Ddebug
+    console.log('Selected Date (State):', selectedDate, typeof selectedDate);
+    console.log('First Lesson Date (Data):', lessons[0]?.date, typeof lessons[0]?.date);
+
+    const visibleSpecialRequests = specialRequests.filter(request =>
+        request.team_id === user.team_id && request.date === selectedDate
+    );
 
     const myMisdarAssignments = [
         { roomNumber: '101', crewName: 'פלוגה א', endTime: '18:00', manual: false },
@@ -257,8 +332,8 @@ const Schedule = () => {
                     </Typography>
                 </Box>
 
-                {/* Misdar Alert */}
-                {myMisdarAssignments && myMisdarAssignments.length > 0 && (
+                {/* Misdar Alert - Only shows on Wednesday after 09:00 */}
+                {showMisdarAlert && myMisdarAssignments && myMisdarAssignments.length > 0 && (
                     <Alert severity="warning" sx={{ mb: 3, bgcolor: '#fff7ed', border: '1px solid #fed7aa' }}>
                         <Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -357,7 +432,7 @@ const Schedule = () => {
                                 סה״כ שיעורים
                             </Typography>
                             <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
-                                {lessons.length}
+                                {visibleLessons.length}
                             </Typography>
                         </Card>
                     </Grid>
@@ -367,7 +442,7 @@ const Schedule = () => {
                                 שובצו
                             </Typography>
                             <Typography variant="h4" sx={{ fontWeight: 700, color: '#15803d' }}>
-                                {lessons.filter((l) => l.status === 'assigned').length}
+                                {visibleLessons.filter((l) => l.status === 'assigned').length}
                             </Typography>
                         </Card>
                     </Grid>
@@ -377,11 +452,12 @@ const Schedule = () => {
                                 ממתינים
                             </Typography>
                             <Typography variant="h4" sx={{ fontWeight: 700, color: '#a16207' }}>
-                                {lessons.filter((l) => l.status === 'pending').length}
+                                {visibleLessons.filter((l) => l.status === 'pending').length}
                             </Typography>
                         </Card>
                     </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
+                    {/* שני אמרה להסיר כרגע */}
+                    {/* <Grid item xs={12} sm={6} md={3}>
                         <Card sx={{ p: 2, bgcolor: '#eff6ff', borderColor: '#93c5fd' }}>
                             <Typography variant="body2" sx={{ color: '#2563eb', mb: 0.5 }}>
                                 בקשות מיוחדות
@@ -390,7 +466,7 @@ const Schedule = () => {
                                 {specialRequests.length}
                             </Typography>
                         </Card>
-                    </Grid>
+                    </Grid> */}
                 </Grid>
 
                 {/* Lessons Table */}
@@ -415,7 +491,7 @@ const Schedule = () => {
                                         <CircularProgress />
                                     </TableCell>
                                 </TableRow>
-                            ) : lessons.length === 0 && specialRequests.length === 0 ? (
+                            ) : visibleLessons.length === 0 && visibleSpecialRequests.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={8} align="center" sx={{ py: 4, color: '#94a3b8' }}>
                                         אין שיעורים או בקשות מיוחדות לתאריך זה
@@ -424,7 +500,7 @@ const Schedule = () => {
                             ) : (
                                 <>
                                     {/* Special Requests */}
-                                    {specialRequests.map((request) => (
+                                    {visibleSpecialRequests.map((request) => (
                                         <TableRow key={`request-${request.id}`} sx={{ bgcolor: '#eff6ff', '&:hover': { bgcolor: '#dbeafe' } }}>
                                             <TableCell align="center">
                                                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
@@ -481,7 +557,7 @@ const Schedule = () => {
                                     ))}
 
                                     {/* Regular Lessons */}
-                                    {lessons.map((lesson) => (
+                                    {visibleLessons.map((lesson) => (
                                         <TableRow key={lesson.id} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
                                             <TableCell align="center">
                                                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -582,10 +658,27 @@ const Schedule = () => {
                 </DialogTitle>
                 <DialogContent dividers>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+
                         {/* Crew/Squad Selector */}
-                        <FormControl fullWidth>
+                        <FormControl fullWidth sx={{
+                            '& .MuiInputLabel-root': { left: 'unset', right: '1.75rem', transformOrigin: 'right' },
+                            '& .MuiOutlinedInput-notchedOutline': { textAlign: 'right' }
+                        }}>
                             <InputLabel>החדר עבור *</InputLabel>
-                            <Select value={formData.crew_name} onChange={handleCrewChange} label="החדר עבור *">
+                            <Select
+                                value={formData.crew_name}
+                                onChange={handleCrewChange}
+                                label="החדר עבור *"
+                                // THIS FIXES THE DROPDOWN LIST DIRECTION
+                                MenuProps={{
+                                    PaperProps: {
+                                        sx: {
+                                            direction: 'rtl',
+                                            '& .MuiMenuItem-root': { justifyContent: 'flex-start' }
+                                        }
+                                    }
+                                }}
+                            >
                                 <MenuItem value="" disabled>
                                     בחר פלוגה או צוות...
                                 </MenuItem>
@@ -593,7 +686,7 @@ const Schedule = () => {
                                     פלוגות
                                 </MenuItem>
                                 {filteredCrews.map((crew) => (
-                                    <MenuItem key={crew.id} value={crew.name} sx={{ pl: 4 }}>
+                                    <MenuItem key={crew.id} value={crew.name}>
                                         {crew.name}
                                     </MenuItem>
                                 ))}
@@ -601,44 +694,85 @@ const Schedule = () => {
                                     צוותים
                                 </MenuItem>
                                 {filteredSquads.map((squad) => (
-                                    <MenuItem key={squad.id} value={squad.squad_number} sx={{ pl: 4 }}>
+                                    <MenuItem key={squad.id} value={squad.squad_number}>
                                         {squad.squad_number} {squad.platoon_name ? `(${squad.platoon_name})` : ''}
                                     </MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
 
-                        {/* Time Fields */}
-                        <Grid container spacing={2}>
-                            <Grid item xs={6}>
-                                <TextField
-                                    fullWidth
-                                    label="שעת התחלה *"
-                                    type="time"
-                                    value={formData.start_time}
-                                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                                    InputLabelProps={{ shrink: true }}
-                                />
+                        {/* Time Fields - Replaced with MUI TimePicker */}
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <Grid container spacing={2}>
+                                <Grid item xs={6}>
+                                    <TimePicker
+                                        label="שעת התחלה *"
+                                        ampm={false} // Forces 24-hour format
+                                        value={formData.start_time ? dayjs(formData.start_time, 'HH:mm') : null}
+                                        onChange={(newValue) => {
+                                            // Convert the date object back to "HH:mm" string
+                                            setFormData({
+                                                ...formData,
+                                                start_time: newValue ? newValue.format('HH:mm') : ''
+                                            });
+                                        }}
+                                        slotProps={{
+                                            textField: {
+                                                fullWidth: true,
+                                                // Apply your RTL Label styles here
+                                                sx: {
+                                                    '& .MuiInputLabel-root': { left: 'unset', right: '2.00rem', transformOrigin: 'right' },
+                                                    '& .MuiOutlinedInput-notchedOutline': { textAlign: 'right' }
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </Grid>
+                                <Grid item xs={6}>
+                                    <TimePicker
+                                        label="שעת סיום *"
+                                        ampm={false} // Forces 24-hour format
+                                        value={formData.end_time ? dayjs(formData.end_time, 'HH:mm') : null}
+                                        onChange={(newValue) => {
+                                            setFormData({
+                                                ...formData,
+                                                end_time: newValue ? newValue.format('HH:mm') : ''
+                                            });
+                                        }}
+                                        slotProps={{
+                                            textField: {
+                                                fullWidth: true,
+                                                // Apply your RTL Label styles here
+                                                sx: {
+                                                    '& .MuiInputLabel-root': { left: 'unset', right: '2.00rem', transformOrigin: 'right' },
+                                                    '& .MuiOutlinedInput-notchedOutline': { textAlign: 'right' }
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </Grid>
                             </Grid>
-                            <Grid item xs={6}>
-                                <TextField
-                                    fullWidth
-                                    label="שעת סיום *"
-                                    type="time"
-                                    value={formData.end_time}
-                                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                                    InputLabelProps={{ shrink: true }}
-                                />
-                            </Grid>
-                        </Grid>
+                        </LocalizationProvider>
 
                         {/* Room Type */}
-                        <FormControl fullWidth>
+                        <FormControl fullWidth sx={{
+                            '& .MuiInputLabel-root': { left: 'unset', right: '1.75rem', transformOrigin: 'right' },
+                            '& .MuiOutlinedInput-notchedOutline': { textAlign: 'right' }
+                        }}>
                             <InputLabel>סוג חדר נדרש *</InputLabel>
                             <Select
                                 value={formData.room_type_needed}
                                 onChange={(e) => setFormData({ ...formData, room_type_needed: e.target.value })}
                                 label="סוג חדר נדרש *"
+                                // THIS FIXES THE DROPDOWN LIST DIRECTION
+                                MenuProps={{
+                                    PaperProps: {
+                                        sx: {
+                                            direction: 'rtl',
+                                            '& .MuiMenuItem-root': { justifyContent: 'flex-start' }
+                                        }
+                                    }
+                                }}
                             >
                                 <MenuItem value="צוותי">צוותי 🏠</MenuItem>
                                 <MenuItem value="פלוגתי">פלוגתי 🏢</MenuItem>
@@ -646,15 +780,18 @@ const Schedule = () => {
                         </FormControl>
 
                         {/* Computers Checkbox */}
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={formData.needs_computers}
-                                    onChange={(e) => setFormData({ ...formData, needs_computers: e.target.checked })}
-                                />
-                            }
-                            label="💻 דורש כיתה עם מחשב"
-                        />
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={formData.needs_computers}
+                                        onChange={(e) => setFormData({ ...formData, needs_computers: e.target.checked })}
+                                    />
+                                }
+                                label="💻 דורש כיתה עם מחשב"
+                                sx={{ mr: 0 }}
+                            />
+                        </Box>
 
                         {/* Notes */}
                         <TextField
@@ -665,6 +802,10 @@ const Schedule = () => {
                             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                             multiline
                             rows={2}
+                            sx={{
+                                '& .MuiInputLabel-root': { left: 'unset', right: '1.75rem', transformOrigin: 'right' },
+                                '& .MuiOutlinedInput-notchedOutline': { textAlign: 'right' }
+                            }}
                         />
                     </Box>
                 </DialogContent>
