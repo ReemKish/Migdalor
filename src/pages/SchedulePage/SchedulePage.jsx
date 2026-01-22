@@ -97,7 +97,7 @@ const Schedule = () => {
         squad_count: '',
         selected_squads: [],
     });
-
+    
     // Mock data
     const crews = [
         { id: '1', name: 'פלוגה א', order: 1 },
