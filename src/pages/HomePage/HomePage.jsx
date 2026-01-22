@@ -8,20 +8,23 @@ import {
     Toolbar,
     Typography,
 } from "@mui/material";
-import { Notebook, Settings, Sparkles, LogOut } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../lib/supabaseClient";
 import UnifiedPlanner from "components/UnifiedPlanner/UnifiedPlanner";
+import DailySchedule from "components/DailySchedule/DailySchedule";
 
-export default function Home() {
+export default function HomePage() {
     const [user, setUser] = useState(null);
     const [authUserId, setAuthUserId] = useState(null);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState("");
+    const [dailyClasses, setDailyClasses] = useState([]);
 
     const navigate = useNavigate();
 
+    // Fetch user info
     useEffect(() => {
         const fetchUser = async () => {
             const { data: authData, error } = await supabase.auth.getUser();
@@ -31,24 +34,15 @@ export default function Home() {
 
             const { data, error: error2 } = await supabase
                 .from("users")
-                // Select from 'roles', using the relationship called 'user_roles'
-                .select(
-                    `
-            full_name,
-            roles!user_roles (
-            name
-            )
-        `,
-                )
+                .select(`full_name, roles!user_roles(name)`)
                 .eq("id", authData.user.id)
                 .single();
 
             if (!error2 && data) {
-                const userData = {
+                setUser({
                     full_name: data.full_name,
                     site_roles: data.roles?.map((r) => r.name) ?? [],
-                };
-                setUser(userData);
+                });
                 setNewName(data.full_name);
             } else {
                 console.error("Error fetching user data:", error2);
@@ -56,6 +50,23 @@ export default function Home() {
         };
 
         fetchUser();
+    }, []);
+
+    // Fetch daily classes for today
+    useEffect(() => {
+        const fetchDailyClasses = async () => {
+            const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+            const { data, error } = await supabase
+                .from("daily_classes")
+                .select("*")
+                .eq("date", today)
+                .order("start_time", { ascending: true });
+
+            if (!error) setDailyClasses(data);
+            else console.error("Error fetching daily classes:", error);
+        };
+
+        fetchDailyClasses();
     }, []);
 
     const updateName = async () => {
@@ -205,9 +216,19 @@ export default function Home() {
                     </Box>
                 )}
 
-                {/* Future Section */}
+                {/* Missions + Daily Schedule */}
                 <Box mt={8}>
-                    <UnifiedPlanner />
+                    <Grid container spacing={4}>
+                        <UnifiedPlanner />
+
+                        {/* Daily Classes */}
+                        <Grid item xs={12} md={6}>
+                            <Typography variant="h5" fontWeight={600} mb={2}>
+                                לו"ז יומי
+                            </Typography>
+                            <DailySchedule classes={dailyClasses} />
+                        </Grid>
+                    </Grid>
                 </Box>
             </Container>
         </Box>
