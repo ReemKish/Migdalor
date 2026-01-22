@@ -40,17 +40,6 @@ export default function KeyRequestsPage() {
     }
   };
 
-  // async function fetchRequests() {
-  //   setLoading(true);
-  //   const { data, error } = await supabase
-  //     .from('keys_request')
-  //     .select('*, requester (id, name)')
-  //     .order('created_at', { ascending: false });
-  //
-  //   if (error) console.error(error);
-  //   else setRequests(data);
-  //   setLoading(false);
-  // }
 
   async function fetchRequests() {
     setLoading(true);
@@ -84,62 +73,148 @@ export default function KeyRequestsPage() {
     setLoading(false);
   }
 
+  async function handleDistributeEqually() {
+    const confirm = window.confirm("האם לחלק מפתחות על בסיס הכמויות המבוקשות ולהקצות לרמת הגדוד?");
+    if (!confirm) return;
+
+    setLoading(true);
+
+    try {
+      // 1. Fetch ALL available keys
+      const { data: availableKeys, error: keyErr } = await supabase
+        .from('keysmanager_keys')
+        .select('*')
+        .eq('assigned_group_id', BAHAD_GROUP_KEY_ID);
+
+      if (keyErr) throw keyErr;
+
+      // 2. Filter keys by category
+      let smallKeys = availableKeys.filter(k => k.room_type_id === 1);
+      let largeKeys = availableKeys.filter(k => k.room_type_id === 2);
+
+      // 3. Get pending requests
+      const pending = requests.filter(r => r.status === 'pending');
+      if (!pending.length) {
+        alert("אין בקשות ממתינות.");
+        return;
+      }
+
+      const updates = [];
+      const battalionMap = {};
+
+      // 4. Process each request
+      for (const req of pending) {
+        // Resolve Battalion ID (Ancestor)
+        if (!battalionMap[req.requester.id]) {
+          const ancestor = await fetchAncestorGroup(req.requester.id, "Battalion");
+          battalionMap[req.requester.id] = ancestor ? ancestor.id : req.requester.id;
+        }
+        const targetGroupId = battalionMap[req.requester.id];
+
+        // Calculate how many keys this request needs
+        // Note: single_team and two_team both usually take 'צוותי' rooms
+        console.log("request: ", req)
+        const needsSmall = (req.single_team_amount || 0) + (req.two_team_amount || 0);
+        const needsLarge = (req.company_amount || 0);
+
+        console.log(`group ${targetGroupId} needs ${needsSmall} smalll and ${needsLarge} large`)
+
+        // Assign Small Keys
+        for (let i = 0; i < needsSmall; i++) {
+          if (smallKeys.length > 0) {
+            const key = smallKeys.shift(); // Remove from available pool
+            updates.push({ id: key.id, assigned_group_id: targetGroupId, created_at: key.created_at, status: key.status, room_number: key.room_number, has_computers: key.has_computers });
+          }
+        }
+
+        // Assign Large Keys
+        for (let i = 0; i < needsLarge; i++) {
+          if (largeKeys.length > 0) {
+            const key = largeKeys.shift(); // Remove from available pool
+            updates.push({ id: key.id, assigned_group_id: targetGroupId, created_at: key.created_at, status: key.status, room_number: key.room_number, has_computers: key.has_computers });
+          }
+        }
+      }
+
+      // 5. Execute Updates
+      if (updates.length > 0) {
+        const { error: upsertErr } = await supabase
+          .from('keysmanager_keys')
+          .upsert(updates);
+        if (upsertErr) throw upsertErr;
+      }
+
+      // 6. Mark requests as approved
+      const requestIds = pending.map(r => r.id);
+      await supabase.from('keys_request').update({ status: 'approved' }).in('id', requestIds);
+
+      alert(`הוקצו ${updates.length} מפתחות בהצלחה.`);
+      fetchRequests();
+
+    } catch (err) {
+      console.error(err);
+      alert("שגיאה בחלוקה: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // async function handleDistributeEqually() {
-  //   const confirm = window.confirm("Assign all available keys equally to pending requests?");
+  //   const confirm = window.confirm("Assign all available keys equally to the Requester's Battalion?");
   //   if (!confirm) return;
   //
   //   setLoading(true);
   //
   //   try {
-  //     // 1. Fetch available keys (where assigned_group_id is null)
+  //     // 1. Fetch available keys
   //     const { data: availableKeys, error: keyErr } = await supabase
   //       .from('keysmanager_keys')
   //       .select('*')
   //       .eq('assigned_group_id', BAHAD_GROUP_KEY_ID);
   //
-  //
   //     // 2. Fetch pending requests
   //     const pending = requests.filter(r => r.status === 'pending');
-  //     console.log("available pending keys:", pending);
   //
   //     if (keyErr || !availableKeys.length || !pending.length) {
-  //       console.log("Key error:", keyErr);
   //       alert("No keys available or no pending requests.");
   //       return;
   //     }
   //
-  //     // 3. Logic: Round Robin Distribution
-  //     // This maps available keys to the requester IDs in the pending list
+  //     // 3. NEW: Resolve the Battalion IDs for all unique requesters first
+  //     // This prevents calling the RPC 50 times for the same group
+  //     const battalionMap = {};
+  //     for (const req of pending) {
+  //       const requesterId = req.requester.id;
+  //       if (!battalionMap[requesterId]) {
+  //         const ancestor = await fetchAncestorGroup(requesterId, "Battalion");
+  //         // Fallback to the requester ID if no battalion is found
+  //         battalionMap[requesterId] = ancestor ? ancestor.id : requesterId;
+  //       }
+  //     }
+  //
+  //     // 4. Create the updates using the resolved Battalion IDs
   //     const updates = availableKeys.map((key, index) => {
   //       const targetRequest = pending[index % pending.length];
+  //       const targetBattalionId = battalionMap[targetRequest.requester.id];
+  //
   //       return {
   //         id: key.id,
-  //         assigned_group_id: targetRequest.requester.id, // Assigning to the requester's ID
+  //         assigned_group_id: targetBattalionId, // Now correctly assigned to Battalion
   //         room_number: key.room_number,
-  //         created_at: key.created_at,
   //         has_computers: key.has_computers,
-  //         status: key.status,
+  //         status: 'occupied', // Optional: update status to occupied
   //       };
   //     });
   //
-  //     // 4. Batch Update the keys table
-  //     // We use upsert with IDs to perform an "Update Only" to avoid NOT NULL errors
-  //     const { error: upsertErr } = await supabase
-  //       .from('keysmanager_keys')
-  //       .upsert(updates);
-  //
+  //     // 5. Batch Update keys
+  //     const { error: upsertErr } = await supabase.from('keysmanager_keys').upsert(updates);
   //     if (upsertErr) throw upsertErr;
   //
-  //     // 5. Update all pending requests to 'approved'
+  //     // 6. Approve the requests
   //     const requestIds = pending.map(r => r.id);
-  //     const { error: statusErr } = await supabase
-  //       .from('keys_request')
-  //       .update({ status: 'approved' })
-  //       .in('id', requestIds);
+  //     await supabase.from('keys_request').update({ status: 'approved' }).in('id', requestIds);
   //
-  //     if (statusErr) throw statusErr;
-  //
-  //     alert(`Successfully distributed ${availableKeys.length} keys across ${pending.length} requesters.`);
+  //     alert(`Distributed ${availableKeys.length} keys to Battalions.`);
   //     fetchRequests();
   //   } catch (err) {
   //     alert("Error: " + err.message);
@@ -147,70 +222,6 @@ export default function KeyRequestsPage() {
   //     setLoading(false);
   //   }
   // }
-
-  async function handleDistributeEqually() {
-    const confirm = window.confirm("Assign all available keys equally to the Requester's Battalion?");
-    if (!confirm) return;
-
-    setLoading(true);
-
-    try {
-      // 1. Fetch available keys
-      const { data: availableKeys, error: keyErr } = await supabase
-        .from('keysmanager_keys')
-        .select('*')
-        .eq('assigned_group_id', BAHAD_GROUP_KEY_ID);
-
-      // 2. Fetch pending requests
-      const pending = requests.filter(r => r.status === 'pending');
-
-      if (keyErr || !availableKeys.length || !pending.length) {
-        alert("No keys available or no pending requests.");
-        return;
-      }
-
-      // 3. NEW: Resolve the Battalion IDs for all unique requesters first
-      // This prevents calling the RPC 50 times for the same group
-      const battalionMap = {};
-      for (const req of pending) {
-        const requesterId = req.requester.id;
-        if (!battalionMap[requesterId]) {
-          const ancestor = await fetchAncestorGroup(requesterId, "Battalion");
-          // Fallback to the requester ID if no battalion is found
-          battalionMap[requesterId] = ancestor ? ancestor.id : requesterId;
-        }
-      }
-
-      // 4. Create the updates using the resolved Battalion IDs
-      const updates = availableKeys.map((key, index) => {
-        const targetRequest = pending[index % pending.length];
-        const targetBattalionId = battalionMap[targetRequest.requester.id];
-
-        return {
-          id: key.id,
-          assigned_group_id: targetBattalionId, // Now correctly assigned to Battalion
-          room_number: key.room_number,
-          has_computers: key.has_computers,
-          status: 'occupied', // Optional: update status to occupied
-        };
-      });
-
-      // 5. Batch Update keys
-      const { error: upsertErr } = await supabase.from('keysmanager_keys').upsert(updates);
-      if (upsertErr) throw upsertErr;
-
-      // 6. Approve the requests
-      const requestIds = pending.map(r => r.id);
-      await supabase.from('keys_request').update({ status: 'approved' }).in('id', requestIds);
-
-      alert(`Distributed ${availableKeys.length} keys to Battalions.`);
-      fetchRequests();
-    } catch (err) {
-      alert("Error: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
