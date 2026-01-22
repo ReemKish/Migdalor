@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
     Button,
@@ -27,6 +27,7 @@ import {
     Paper,
     TableContainer,
     CircularProgress,
+    Tooltip
 } from '@mui/material';
 import {
     Add as PlusIcon,
@@ -34,135 +35,136 @@ import {
     Delete as Trash2Icon,
     Edit as Edit2Icon,
     Computer as MonitorIcon,
+    Save as SaveIcon,
+    Cancel as CancelIcon,
+    CleaningServices as BroomIcon
 } from '@mui/icons-material';
-import { useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient'; // Ensure path is correct
+
+const BAHAD_GROUP_KEY_ID = 13;
+
+// --- Utility Functions ---
+
+function getNextWednesday(from = new Date()) {
+    const date = new Date(from);
+    const day = date.getDay(); // 0 = Sun, 3 = Wed
+    const daysUntilWednesday = (3 - day + 7) % 7;
+    date.setDate(date.getDate() + daysUntilWednesday);
+    return date;
+}
+
+function formatLessonData(data) {
+    return {
+        id: data.id,
+        assigned_key: data.assigned_key || data.room_number, // Fallback if column names vary
+        crew_name: data.crew_name || data.crew,
+        platoon_name: data.platoon_name,
+        crew_manager: data.crew_manager,
+        start_time: data.start_time?.slice(0, 5),
+        end_time: data.end_time?.slice(0, 5),
+        status: data.status,
+    };
+}
 
 const KeysManager = () => {
+    // --- State Management ---
     const [user, setUser] = useState(null);
-    useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (error) {
-                console.error('Error fetching user:', error);
-            }
-            const userData = supabase.from('users').select('email, site_role, pluga').eq('id', user.id).single();
-            setUser({
-                email: userData.email,
-                site_role: userData.site_role,
-                platoon_name: userData.pluga,
-            });
-        };
+    const [keys, setKeys] = useState([]);
+    const [buildings, setBuildings] = useState([]);
+    const [groups, setGroups] = useState([]);
+    const [todayLessons, setTodayLessons] = useState([]);
+    const [wednesdayLessons, setWednesdayLessons] = useState([]);
 
-        fetchUser();
-    }, []);
+    // UI States
+    const [isLoading, setIsLoading] = useState(true);
+    const [isDistributing, setIsDistributing] = useState(false);
 
+    // Modals
     const [showModal, setShowModal] = useState(false);
     const [editingKey, setEditingKey] = useState(null);
     const [misdarEditKey, setMisdarEditKey] = useState(null);
     const [misdarValue, setMisdarValue] = useState('');
-    const [isLoading] = useState(false);
+
+    // Form Data
     const [formData, setFormData] = useState({
         room_number: '',
         room_type: 'צוותי',
         has_computers: false,
-        building: '',
+        building_id: '',
     });
 
+    const isAdmin = user?.site_role === 'admin' || true; // TODO: Remove '|| true' for production
 
-    const [keys, setKeys] = useState([]);
-    useEffect(() => {
-        const fetchKeys = async () => {
-            const { data, error } = await supabase.from('keysmanager_keys').select('*');
-            if (error) {
-                console.error('Error fetching keys:', error);
-            } else {
-                setKeys(data);
+    // --- Data Fetching ---
+
+    const fetchData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            // 1. Get User
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+                const { data: userData } = await supabase.from('users')
+                    .select('full_name, site_role, group_node(id, name), user_roles(role_id, roles (id, name))')
+                    .eq('id', authUser.id).single();
+                setUser(userData);
             }
-        };
 
-        fetchKeys();
+            // 2. Parallel Fetch for Data
+            const [keysReq, buildingsReq, groupsReq, todayLessonsReq, wedLessonsReq] = await Promise.all([
+                supabase.from('keysmanager_keys').select('*, group_node(id, name)').order('room_number', { ascending: true }),
+                supabase.from("buildings").select("*"),
+                supabase.from("group_node").select("*, group_type(id, name)"),
+                supabase.from('schedule_lessons').select('*').eq('date', new Date().toISOString().split("T")[0]),
+                supabase.from('schedule_lessons').select('*').eq('date', getNextWednesday().toISOString().split("T")[0])
+            ]);
+
+            if (keysReq.data) setKeys(keysReq.data);
+            if (buildingsReq.data) setBuildings(buildingsReq.data);
+            if (groupsReq.data) setGroups(groupsReq.data);
+            if (todayLessonsReq.data) setTodayLessons(todayLessonsReq.data.map(formatLessonData));
+            if (wedLessonsReq.data) setWednesdayLessons(wedLessonsReq.data.map(formatLessonData));
+
+        } catch (error) {
+            console.error("Error loading data:", error);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
 
-    // TODO: Replace with real buildings
-    const buildings = [
-        { id: '1', name: 'בניין A', order: 1 },
-        { id: '2', name: 'בניין B', order: 2 },
-        { id: '3', name: 'בניין C', order: 3 },
-    ];
-
-    const [todayLessons, setTodayLessons] = useState([]);
-    const [wednesdayLessons, setWednesdayLessons] = useState([]);
     useEffect(() => {
-        function getNextWednesday(from = new Date()) {
-            const date = new Date(from);
-            const day = date.getDay(); // 0 = Sun, 3 = Wed
-            const daysUntilWednesday = (3 - day) % 7;
-            date.setDate(date.getDate() + daysUntilWednesday);
-            return date;
-        }
+        fetchData();
+    }, [fetchData]);
 
-        function changeFormat(data) {
-            return {
-                id: data.id,
-                assigned_key: data.room_number,
-                crew_name: data.crew,
-                start_time: data.start_time.slice(0, 5),
-                end_time: data.end_time.slice(0, 5),
-                status: data.status,
-            }
-        }
+    // --- Logic Helpers ---
 
-        const fetchLessons = async () => {
-            // get todays lessons
-            const { data: todayLessons } = await supabase.from('schedule_lessons')
-                .select('*')
-                .eq('date', new Date().toISOString().split("T")[0]);
-            setTodayLessons(todayLessons.map(changeFormat));
-
-
-            // get lessons on next wednesday
-            const { data: wednesdayLessons } = await supabase.from('schedule_lessons')
-                .select('*')
-                .eq('date', getNextWednesday().toISOString().split("T")[0]);
-            setWednesdayLessons(wednesdayLessons.map(changeFormat));
-        }
-
-        fetchLessons();
-    }, []);
-
-    if (user === null) return <p> Loading... </p>;
-    const isAdmin = user?.site_role === 'admin' || true;
-    // Get current key holder for a room
     const getCurrentHolder = (roomNumber) => {
         const now = new Date();
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
         const currentLesson = todayLessons.find(
             (lesson) =>
                 lesson.assigned_key === roomNumber &&
                 lesson.start_time <= currentTime &&
                 lesson.end_time > currentTime
         );
-
         return currentLesson ? currentLesson.crew_name : null;
     };
 
-    // Get who's responsible for cleaning this room (Misdar)
     const getMisdarResponsible = (key) => {
-        // Check for manual assignment first
         if (key.manual_misdar_assignment) {
-            return { crewName: key.manual_misdar_assignment, platoon: null };
+            return { crewName: key.manual_misdar_assignment, platoon: null, isManual: true };
         }
 
         if (!wednesdayLessons.length) return null;
 
-        // Find all lessons for this room
         const roomLessons = wednesdayLessons.filter((l) => l.assigned_key === key.room_number);
         if (roomLessons.length === 0) return null;
 
-        // Check each lesson to see if the key was passed to another crew
+        // Sort lessons by time to ensure order
+        roomLessons.sort((a, b) => a.start_time.localeCompare(b.start_time));
+
         for (const lesson of roomLessons) {
-            // Check if there's another lesson that took this key after this one
+            // Find if anyone takes the key AFTER this lesson
             const nextLesson = wednesdayLessons.find(
                 (l) =>
                     l.assigned_key === key.room_number &&
@@ -170,64 +172,170 @@ const KeysManager = () => {
                     l.start_time >= lesson.end_time
             );
 
-            // If no one took the key after this lesson, this crew is responsible
+            // If no one takes it afterwards, this crew is responsible
             if (!nextLesson) {
-                const platoon = lesson.platoon_name || null;
-                return { crewName: lesson.crew_name, platoon };
+                return { crewName: lesson.crew_name, platoon: lesson.platoon_name, isManual: false };
             }
         }
-
         return null;
     };
 
-    const handleSubmit = () => {
-        if (!formData.room_number) {
-            alert('אנא הזן מספר חדר');
-            return;
-        }
-
-        if (editingKey) {
-            console.log('Updating key:', editingKey.id, formData);
-        } else {
-            console.log('Creating key:', formData);
-        }
-
-        setShowModal(false);
-        setEditingKey(null);
-        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building: '' });
+    const isKeyAvailable = (key) => {
+        return key.assigned_group_id !== null && key.assigned_group_id !== BAHAD_GROUP_KEY_ID;
     };
 
-    const handleEdit = (key) => {
+    const getAssignedGroupName = (key) => {
+        return isKeyAvailable(key) ? key.group_node?.name : null;
+    };
+
+    // --- Handlers ---
+
+    // Open/Close Modals
+    const handleOpenEdit = (key) => {
         setEditingKey(key);
         setFormData({
             room_number: key.room_number,
             room_type: key.room_type,
             has_computers: key.has_computers || false,
-            building: key.building || '',
+            building_id: key.building_id || '',
         });
         setShowModal(true);
     };
 
-    const handleClose = () => {
+    const handleCloseModal = () => {
         setShowModal(false);
         setEditingKey(null);
-        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building: '' });
+        setFormData({ room_number: '', room_type: 'צוותי', has_computers: false, building_id: '' });
     };
 
-    const handleDelete = (id) => {
-        console.log('Deleting key:', id);
+    // Submit Create or Edit Key
+    const handleSubmitKey = async () => {
+        if (!formData.room_number) {
+            alert('אנא הזן מספר חדר');
+            return;
+        }
+
+        const payload = {
+            room_number: formData.room_number,
+            room_type: formData.room_type,
+            has_computers: formData.has_computers,
+            building_id: formData.building_id || null, // Handle empty string
+            assigned_group_id: BAHAD_GROUP_KEY_ID,
+        };
+
+        try {
+            if (editingKey) {
+                // UPDATE
+                const { data, error } = await supabase
+                    .from("keysmanager_keys")
+                    .update(payload)
+                    .eq('id', editingKey.id)
+                    .select('*, group_node(id, name)') // Fetch related data for UI
+                    .single();
+
+                if (error) throw error;
+
+                // Update local state
+                setKeys(prev => prev.map(k => k.id === editingKey.id ? data : k));
+
+            } else {
+                // INSERT
+                const newKey = {
+                    ...payload,
+                    status: 'free',
+                    manual_misdar_assignment: "",
+                    assigned_group_id: BAHAD_GROUP_KEY_ID
+                };
+
+                const { data, error } = await supabase
+                    .from("keysmanager_keys")
+                    .insert(newKey)
+                    .select('*, group_node(id, name)')
+                    .single();
+
+                if (error) throw error;
+                setKeys(prev => [...prev, data]);
+            }
+            handleCloseModal();
+        } catch (error) {
+            console.error("Error saving key:", error);
+            alert("Error saving key. Check console.");
+        }
     };
 
-    const handleMisdarEdit = (key) => {
-        setMisdarEditKey(key);
-        setMisdarValue(key.manual_misdar_assignment || '');
+    // Delete Key
+    const handleDelete = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this key?")) return;
+
+        try {
+            const { error } = await supabase.from('keysmanager_keys').delete().eq('id', id);
+            if (error) throw error;
+
+            // Remove from local state
+            setKeys(prev => prev.filter(k => k.id !== id));
+        } catch (error) {
+            console.error("Error deleting key:", error);
+        }
     };
 
-    const handleMisdarSave = () => {
-        if (misdarEditKey) {
-            console.log('Updating misdar assignment:', misdarEditKey.id, misdarValue);
+    // Save Misdar Assignment
+    const handleMisdarSave = async () => {
+        if (!misdarEditKey) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('keysmanager_keys')
+                .update({ manual_misdar_assignment: misdarValue })
+                .eq('id', misdarEditKey.id)
+                .select('*, group_node(id, name)')
+                .single();
+
+            if (error) throw error;
+
+            setKeys(prev => prev.map(k => k.id === misdarEditKey.id ? data : k));
             setMisdarEditKey(null);
             setMisdarValue('');
+        } catch (error) {
+            console.error("Error updating misdar:", error);
+        }
+    };
+
+    // Distribution Logic
+    const handleLocalAssign = (index, groupId) => {
+        setKeys(prevKeys => {
+            const newKeys = [...prevKeys];
+            newKeys[index] = { ...newKeys[index], assigned_group_id: groupId };
+            return newKeys;
+        });
+    };
+
+    const handleSaveDistribution = async () => {
+        try {
+            setIsLoading(true);
+            const updates = keys.map(k => ({
+                id: k.id,
+                assigned_group_id: k.assigned_group_id,
+                created_at: k.created_at,
+                room_number: k.room_number,
+                has_computers: k.has_computers,
+                status: k.status,
+            }));
+
+            // Upsert is more efficient than Promise.all map
+            const { error } = await supabase
+                .from("keysmanager_keys")
+                .upsert(updates, { onConflict: 'id' });
+
+            if (error) throw error;
+
+            // Refresh to get group names populated correctly from relation
+            await fetchData();
+            setIsDistributing(false);
+        } catch (error) {
+            console.error("Error saving distribution:", error);
+            alert("Failed to save distribution");
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -235,13 +343,7 @@ const KeysManager = () => {
     const largeCount = keys.filter((k) => k.room_type === 'פלוגתי').length;
 
     return (
-        <Box
-            sx={{
-                minHeight: '100vh',
-                background: 'linear-gradient(to bottom right, #f8fafc, #ffffff, #f1f5f9)',
-            }}
-            dir="rtl"
-        >
+        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #f8fafc, #ffffff, #f1f5f9)' }} dir="rtl">
             <Container maxWidth="lg" sx={{ py: 4 }}>
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
@@ -256,46 +358,68 @@ const KeysManager = () => {
                 <Grid container spacing={2} sx={{ mb: 4 }}>
                     <Grid item xs={12} sm={4}>
                         <Card sx={{ p: 2, border: '1px solid #e2e8f0' }}>
-                            <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>
-                                סה״כ מפתחות
-                            </Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
-                                {keys.length}
-                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>סה״כ מפתחות</Typography>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>{keys.length}</Typography>
                         </Card>
                     </Grid>
                     <Grid item xs={12} sm={4}>
                         <Card sx={{ p: 2, bgcolor: '#eff6ff', borderColor: '#bfdbfe' }}>
-                            <Typography variant="body2" sx={{ color: '#2563eb', mb: 0.5 }}>
-                                חדרים צוותיים
-                            </Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1d4ed8' }}>
-                                {smallCount}
-                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#2563eb', mb: 0.5 }}>חדרים צוותיים</Typography>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1d4ed8' }}>{smallCount}</Typography>
                         </Card>
                     </Grid>
                     <Grid item xs={12} sm={4}>
                         <Card sx={{ p: 2, bgcolor: '#faf5ff', borderColor: '#e9d5ff' }}>
-                            <Typography variant="body2" sx={{ color: '#9333ea', mb: 0.5 }}>
-                                חדרים פלוגתיים
-                            </Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#7e22ce' }}>
-                                {largeCount}
-                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#9333ea', mb: 0.5 }}>חדרים פלוגתיים</Typography>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#7e22ce' }}>{largeCount}</Typography>
                         </Card>
                     </Grid>
                 </Grid>
 
+                {/* Action Bar */}
                 {isAdmin && (
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-                        <Button
-                            variant="contained"
-                            startIcon={<PlusIcon />}
-                            onClick={() => setShowModal(true)}
-                            sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
-                        >
-                            הוסף מפתח חדש
-                        </Button>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}>
+                        {!isDistributing ? (
+                            <>
+                                <Button
+                                    variant="contained"
+                                    startIcon={<PlusIcon />}
+                                    onClick={() => setShowModal(true)}
+                                    sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                                >
+                                    הוסף מפתח
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<Edit2Icon />}
+                                    onClick={() => setIsDistributing(true)}
+                                >
+                                    חלק מפתחות
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="contained"
+                                    startIcon={<SaveIcon />}
+                                    onClick={handleSaveDistribution}
+                                    sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                                >
+                                    שמור חלוקה
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<CancelIcon />}
+                                    onClick={() => {
+                                        setIsDistributing(false);
+                                        fetchData(); // Revert local changes
+                                    }}
+                                    color="error"
+                                >
+                                    בטל
+                                </Button>
+                            </>
+                        )}
                     </Box>
                 )}
 
@@ -304,55 +428,36 @@ const KeysManager = () => {
                     <Table>
                         <TableHead>
                             <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                    מספר חדר
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                    סוג
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                    אזור
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                    מחשבים
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                    סטטוס / מחזיק
-                                </TableCell>
-                                {isAdmin && (
-                                    <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                        מסדר כיתות 🧹
-                                    </TableCell>
-                                )}
-                                {isAdmin && (
-                                    <TableCell align="center" sx={{ fontWeight: 600 }}>
-                                        פעולות
-                                    </TableCell>
-                                )}
+                                <TableCell align="center" sx={{ fontWeight: 600 }}>מספר חדר</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 600 }}>סוג</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 600 }}>אזור</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 600 }}>מחשבים</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 600 }}>סטטוס / מחזיק</TableCell>
+                                {isAdmin && <TableCell align="center" sx={{ fontWeight: 600 }}>מסדר כיתות 🧹</TableCell>}
+                                {isAdmin && !isDistributing && <TableCell align="center" sx={{ fontWeight: 600 }}>פעולות</TableCell>}
+                                {isDistributing && <TableCell align="center" sx={{ fontWeight: 600 }}>מוקצא ל</TableCell>}
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {isLoading ? (
                                 <TableRow>
-                                    <TableCell colSpan={isAdmin ? 7 : 5} align="center" sx={{ py: 4 }}>
+                                    <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                                         <CircularProgress />
                                     </TableCell>
                                 </TableRow>
                             ) : keys.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={isAdmin ? 7 : 5} align="center" sx={{ py: 4, color: '#94a3b8' }}>
+                                    <TableCell colSpan={8} align="center" sx={{ py: 4, color: '#94a3b8' }}>
                                         עדיין לא נוספו מפתחות
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                keys.map((key) => (
+                                keys.map((key, index) => (
                                     <TableRow key={key.id} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                                 <KeyIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
-                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                                    {key.room_number}
-                                                </Typography>
+                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>{key.room_number}</Typography>
                                             </Box>
                                         </TableCell>
                                         <TableCell align="center">
@@ -367,108 +472,89 @@ const KeysManager = () => {
                                             />
                                         </TableCell>
                                         <TableCell align="center">
-                                            {key.building ? (
+                                            {key.building_id ? (
                                                 <Chip
-                                                    label={`📍 ${key.building}`}
+                                                    label={`📍 ${buildings.find(b => b.id === key.building_id)?.name || key.building_id}`}
                                                     size="small"
                                                     variant="outlined"
                                                     sx={{ borderColor: '#cbd5e1', color: '#475569' }}
                                                 />
-                                            ) : (
-                                                <Typography variant="body2" sx={{ color: '#94a3b8' }}>
-                                                    —
-                                                </Typography>
-                                            )}
+                                            ) : '—'}
                                         </TableCell>
                                         <TableCell align="center">
-                                            {key.has_computers ? (
-                                                <MonitorIcon sx={{ fontSize: 16, color: '#2563eb' }} />
-                                            ) : (
-                                                <Typography variant="body2" sx={{ color: '#cbd5e1' }}>
-                                                    —
-                                                </Typography>
-                                            )}
+                                            {key.has_computers ? <MonitorIcon sx={{ fontSize: 16, color: '#2563eb' }} /> : <Typography variant="body2" sx={{ color: '#cbd5e1' }}>—</Typography>}
                                         </TableCell>
                                         <TableCell align="center">
                                             {(() => {
-                                                const holder = getCurrentHolder(key.room_number);
+                                                const holder = getCurrentHolder(key.room_number) || getAssignedGroupName(key);
                                                 return holder ? (
-                                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                                                        <Chip
-                                                            label="תפוס"
-                                                            size="small"
-                                                            sx={{ bgcolor: '#fef3c7', color: '#92400e' }}
-                                                        />
-                                                        <Typography variant="caption" sx={{ color: '#475569' }}>
-                                                            {holder}
-                                                        </Typography>
+                                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                        <Chip label="תפוס" size="small" sx={{ bgcolor: '#fef3c7', color: '#92400e' }} />
+                                                        <Typography variant="caption" sx={{ color: '#475569' }}>{holder}</Typography>
                                                     </Box>
                                                 ) : (
-                                                    <Chip
-                                                        label="זמין"
-                                                        size="small"
-                                                        sx={{ bgcolor: '#d1fae5', color: '#065f46' }}
-                                                    />
+                                                    <Chip label="זמין" size="small" sx={{ bgcolor: '#d1fae5', color: '#065f46' }} />
                                                 );
                                             })()}
                                         </TableCell>
+
+                                        {/* Misdar Column */}
                                         {isAdmin && (
                                             <TableCell align="center">
                                                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                                     {(() => {
                                                         const responsible = getMisdarResponsible(key);
                                                         return responsible ? (
-                                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                                                                <Chip
-                                                                    label={`🧹 ${responsible.crewName}`}
-                                                                    size="small"
-                                                                    variant="outlined"
-                                                                    sx={{
-                                                                        bgcolor: '#fff7ed',
-                                                                        color: '#c2410c',
-                                                                        borderColor: '#fed7aa',
-                                                                    }}
-                                                                />
-                                                                {responsible.platoon && (
-                                                                    <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 500 }}>
-                                                                        {responsible.platoon}
-                                                                    </Typography>
-                                                                )}
-                                                            </Box>
-                                                        ) : (
-                                                            <Typography variant="caption" sx={{ color: '#94a3b8' }}>
-                                                                —
-                                                            </Typography>
-                                                        );
+                                                            <Tooltip title={responsible.isManual ? "הוגדר ידנית" : "חושב אוטומטית"}>
+                                                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                                    <Chip
+                                                                        label={`🧹 ${responsible.crewName}`}
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                        sx={{ bgcolor: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' }}
+                                                                    />
+                                                                    {responsible.platoon && (
+                                                                        <Typography variant="caption" sx={{ color: '#64748b' }}>{responsible.platoon}</Typography>
+                                                                    )}
+                                                                </Box>
+                                                            </Tooltip>
+                                                        ) : <Typography variant="caption" sx={{ color: '#94a3b8' }}>—</Typography>;
                                                     })()}
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={() => handleMisdarEdit(key)}
-                                                        sx={{ color: '#94a3b8', '&:hover': { color: '#ea580c' } }}
-                                                    >
-                                                        <Edit2Icon sx={{ fontSize: 14 }} />
+                                                    <IconButton size="small" onClick={() => { setMisdarEditKey(key); setMisdarValue(key.manual_misdar_assignment || ''); }}>
+                                                        <Edit2Icon sx={{ fontSize: 14, color: '#94a3b8' }} />
                                                     </IconButton>
                                                 </Box>
                                             </TableCell>
                                         )}
-                                        {isAdmin && (
+
+                                        {/* Actions Column */}
+                                        {isAdmin && !isDistributing && (
                                             <TableCell align="center">
-                                                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={() => handleEdit(key)}
-                                                        sx={{ color: '#64748b', '&:hover': { color: '#475569' } }}
-                                                    >
-                                                        <Edit2Icon fontSize="small" />
+                                                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                                                    <IconButton size="small" onClick={() => handleOpenEdit(key)}>
+                                                        <Edit2Icon fontSize="small" sx={{ color: '#64748b' }} />
                                                     </IconButton>
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={() => handleDelete(key.id)}
-                                                        sx={{ color: '#f87171', '&:hover': { color: '#dc2626', bgcolor: '#fef2f2' } }}
-                                                    >
-                                                        <Trash2Icon fontSize="small" />
+                                                    <IconButton size="small" onClick={() => handleDelete(key.id)}>
+                                                        <Trash2Icon fontSize="small" sx={{ color: '#f87171' }} />
                                                     </IconButton>
                                                 </Box>
+                                            </TableCell>
+                                        )}
+
+                                        {/* Distribution Mode Column */}
+                                        {isDistributing && (
+                                            <TableCell align="center">
+                                                <Select
+                                                    size="small"
+                                                    value={key.assigned_group_id || BAHAD_GROUP_KEY_ID}
+                                                    onChange={(e) => handleLocalAssign(index, e.target.value)}
+                                                    sx={{ minWidth: 120, fontSize: '0.875rem' }}
+                                                >
+                                                    <MenuItem value={BAHAD_GROUP_KEY_ID}>בה"ד (פנוי)</MenuItem>
+                                                    {groups.filter((b) => b.group_type.name === "Battalion").map((b) => (
+                                                        <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
+                                                    ))}
+                                                </Select>
                                             </TableCell>
                                         )}
                                     </TableRow>
@@ -479,125 +565,78 @@ const KeysManager = () => {
                 </TableContainer>
             </Container>
 
-            {/* Misdar Edit Modal */}
-            <Dialog
-                open={!!misdarEditKey}
-                onClose={() => {
-                    setMisdarEditKey(null);
-                    setMisdarValue('');
-                }}
-                maxWidth="sm"
-                fullWidth
-                dir="rtl"
-            >
+            {/* Misdar Modal */}
+            <Dialog open={!!misdarEditKey} onClose={() => setMisdarEditKey(null)} maxWidth="sm" fullWidth dir="rtl">
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box
-                        sx={{
-                            p: 1,
-                            bgcolor: '#ffedd5',
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.2rem',
-                        }}
-                    >
-                        🧹
-                    </Box>
+                    <Box sx={{ p: 1, bgcolor: '#ffedd5', borderRadius: 1 }}>🧹</Box>
                     ערוך מסדר כיתות
                 </DialogTitle>
                 <DialogContent dividers>
                     <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
                         הגדר ידנית איזו פלוגה אחראית על מסדר חדר {misdarEditKey?.room_number}
                     </Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-                        <FormControl fullWidth>
-                            <InputLabel>שם הפלוגה האחראית</InputLabel>
-                            <Select
-                                value={misdarValue}
-                                onChange={(e) => setMisdarValue(e.target.value)}
-                                label="שם הפלוגה האחראית"
-                            >
-                                <MenuItem value="">חישוב אוטומטי</MenuItem>
-                                <MenuItem value="פלוגה א - סהר">פלוגה א - סהר</MenuItem>
-                                <MenuItem value="פלוגה ב - יפתח">פלוגה ב - יפתח</MenuItem>
-                                <MenuItem value="פלוגה ג - אייל">פלוגה ג - אייל</MenuItem>
-                                <MenuItem value="פלוגה ד - אסף">פלוגה ד - אסף</MenuItem>
-                                <MenuItem value="פלוגה ה - איתן">פלוגה ה - איתן</MenuItem>
-                            </Select>
-                        </FormControl>
-                        <Typography variant="caption" sx={{ color: '#64748b' }}>
-                            בחר "חישוב אוטומטי" כדי להשתמש בחישוב לפי לוח השיעורים ביום רביעי
-                        </Typography>
-                    </Box>
+                    <FormControl fullWidth>
+                        <InputLabel>שם הפלוגה האחראית</InputLabel>
+                        <Select
+                            value={misdarValue}
+                            onChange={(e) => setMisdarValue(e.target.value)}
+                            label="שם הפלוגה האחראית"
+                        >
+                            <MenuItem value="">חישוב אוטומטי</MenuItem>
+                            <MenuItem value="פלוגה א - סהר">פלוגה א - סהר</MenuItem>
+                            <MenuItem value="פלוגה ב - יפתח">פלוגה ב - יפתח</MenuItem>
+                            <MenuItem value="פלוגה ג - אייל">פלוגה ג - אייל</MenuItem>
+                            <MenuItem value="פלוגה ד - אסף">פלוגה ד - אסף</MenuItem>
+                            <MenuItem value="פלוגה ה - איתן">פלוגה ה - איתן</MenuItem>
+                        </Select>
+                    </FormControl>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button
-                        onClick={() => {
-                            setMisdarEditKey(null);
-                            setMisdarValue('');
-                        }}
-                        variant="outlined"
-                        fullWidth
-                    >
-                        ביטול
-                    </Button>
-                    <Button
-                        onClick={handleMisdarSave}
-                        variant="contained"
-                        fullWidth
-                        sx={{ bgcolor: '#ea580c', '&:hover': { bgcolor: '#c2410c' } }}
-                    >
-                        שמור
-                    </Button>
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={() => setMisdarEditKey(null)}>ביטול</Button>
+                    <Button onClick={handleMisdarSave} variant="contained" sx={{ bgcolor: '#ea580c' }}>שמור</Button>
                 </DialogActions>
             </Dialog>
 
-            {/* Add/Edit Key Modal */}
-            <Dialog open={showModal} onClose={handleClose} maxWidth="sm" fullWidth dir="rtl">
+            {/* Create/Edit Key Modal */}
+            <Dialog open={showModal} onClose={handleCloseModal} maxWidth="sm" fullWidth dir="rtl">
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box
-                        sx={{
-                            p: 1,
-                            bgcolor: '#d1fae5',
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
+                    <Box sx={{ p: 1, bgcolor: '#d1fae5', borderRadius: 1 }}>
                         <KeyIcon sx={{ color: '#059669', fontSize: 20 }} />
                     </Box>
                     {editingKey ? 'ערוך מפתח' : 'הוסף מפתח חדש'}
                 </DialogTitle>
                 <DialogContent dividers>
-                    <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
-                        {editingKey ? 'עדכן את פרטי המפתח' : 'הוסף מפתח חדש למעקב'}
-                    </Typography>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-                        {/* Room Number */}
                         <TextField
+                            label="מספר חדר"
                             fullWidth
-                            label="מספר חדר *"
-                            placeholder="למשל, 101..."
                             value={formData.room_number}
                             onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
                         />
-
-                        {/* Room Type */}
                         <FormControl fullWidth>
                             <InputLabel>סוג חדר</InputLabel>
                             <Select
                                 value={formData.room_type}
-                                onChange={(e) => setFormData({ ...formData, room_type: e.target.value })}
                                 label="סוג חדר"
+                                onChange={(e) => setFormData({ ...formData, room_type: e.target.value })}
                             >
-                                <MenuItem value="צוותי">צוותי 🏠</MenuItem>
-                                <MenuItem value="פלוגתי">פלוגתי 🏢</MenuItem>
+                                <MenuItem value="צוותי">צוותי</MenuItem>
+                                <MenuItem value="פלוגתי">פלוגתי</MenuItem>
                             </Select>
                         </FormControl>
-
-                        {/* Has Computers */}
+                        <FormControl fullWidth>
+                            <InputLabel>בניין</InputLabel>
+                            <Select
+                                value={formData.building_id}
+                                label="בניין"
+                                onChange={(e) => setFormData({ ...formData, building_id: e.target.value })}
+                            >
+                                <MenuItem value="">ללא בניין</MenuItem>
+                                {buildings.map(b => (
+                                    <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
                         <FormControlLabel
                             control={
                                 <Checkbox
@@ -605,39 +644,18 @@ const KeysManager = () => {
                                     onChange={(e) => setFormData({ ...formData, has_computers: e.target.checked })}
                                 />
                             }
-                            label="יש מחשב בכיתה 💻"
+                            label="האם יש מחשבים בחדר?"
                         />
-
-                        {/* building */}
-                        <FormControl fullWidth>
-                            <InputLabel>אזור (אופציונלי)</InputLabel>
-                            <Select
-                                value={formData.building}
-                                onChange={(e) => setFormData({ ...formData, building: e.target.value })}
-                                label="אזור (אופציונלי)"
-                            >
-                                <MenuItem value="">בחר אזור...</MenuItem>
-                                {buildings.map((building) => (
-                                    <MenuItem key={building.id} value={building.name}>
-                                        {building.name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
                     </Box>
                 </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button onClick={handleClose} variant="outlined" fullWidth>
-                        ביטול
-                    </Button>
+                <DialogActions sx={{ p: 2 }}>
+                    <Button onClick={handleCloseModal}>ביטול</Button>
                     <Button
-                        onClick={handleSubmit}
+                        onClick={handleSubmitKey}
                         variant="contained"
-                        fullWidth
-                        disabled={!formData.room_number}
                         sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
                     >
-                        {editingKey ? 'עדכן מפתח' : 'הוסף מפתח'}
+                        {editingKey ? 'עדכן מפתח' : 'צור מפתח'}
                     </Button>
                 </DialogActions>
             </Dialog>

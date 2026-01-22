@@ -1,0 +1,9 @@
+
+{
+  "testFiles": [
+    "doctrines.json",
+    "tactics.json",
+    "asd.json",
+    "test.json"
+  ]
+}
