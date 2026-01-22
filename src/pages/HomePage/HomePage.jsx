@@ -1,3 +1,15 @@
+/**
+ * HomePage.jsx
+ * 
+ * Main landing page after login.
+ * Shows:
+ * 1. Greeting + user info
+ * 2. Site navigation
+ * 3. Missions (monthly tasks) via UnifiedPlanner
+ * 4. Daily classes schedule for today
+ * 5. Username editing and logout functionality
+ */
+
 import {
     AppBar,
     Box,
@@ -8,47 +20,52 @@ import {
     Toolbar,
     Typography,
 } from "@mui/material";
-import { Notebook, Settings, Sparkles, LogOut } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../lib/supabaseClient";
-import UnifiedPlanner from "components/UnifiedPlanner/UnifiedPlanner";
 
-export default function Home() {
-    const [user, setUser] = useState(null);
+// Components
+import UnifiedPlanner from "components/UnifiedPlanner/UnifiedPlanner";
+import DailySchedule from "components/DailySchedule/DailySchedule";
+
+const getAllGroupIds = (mainGroupId) => {
+    // TODO: add the group's parent groups as well to the array.
+    return [mainGroupId]
+}
+
+export default function HomePage() {
+    // ---------- STATE ----------
+    const [user, setUser] = useState(null);           // Authenticated user info
     const [authUserId, setAuthUserId] = useState(null);
+    const [authUserGroupIds, setAuthUserGroupIds] = useState(null);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState("");
+    const [dailyClasses, setDailyClasses] = useState([]); // Today’s lessons
 
     const navigate = useNavigate();
 
+    // ---------- EFFECT 1: FETCH USER DATA ----------
     useEffect(() => {
         const fetchUser = async () => {
             const { data: authData, error } = await supabase.auth.getUser();
             if (error || !authData?.user) return;
 
             setAuthUserId(authData.user.id);
+            setAuthUserGroupIds(getAllGroupIds(authData.user.group_id));
 
+            // Fetch user record and roles
             const { data, error: error2 } = await supabase
                 .from("users")
-                // Select from 'roles', using the relationship called 'user_roles'
-                .select(
-                    `
-            full_name,
-            roles!user_roles (
-            name
-            )
-        `,
-                )
+                .select(`full_name, roles!user_roles(name)`)
                 .eq("id", authData.user.id)
                 .single();
 
             if (!error2 && data) {
-                const userData = {
+                setUser({
                     full_name: data.full_name,
                     site_roles: data.roles?.map((r) => r.name) ?? [],
-                };
-                setUser(userData);
+                });
                 setNewName(data.full_name);
             } else {
                 console.error("Error fetching user data:", error2);
@@ -58,6 +75,25 @@ export default function Home() {
         fetchUser();
     }, []);
 
+    // ---------- EFFECT 2: FETCH TODAY'S DAILY CLASSES ----------
+    useEffect(() => {
+        const fetchDailyClasses = async () => {
+            const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+            const { data, error } = await supabase
+                .from("schedule_lessons")
+                .select("*")
+                .eq("date", today)
+                .in("id", authUserGroupIds)
+                .order("start_time", { ascending: true });
+
+            if (!error) setDailyClasses(data);
+            else console.error("Error fetching daily classes:", error);
+        };
+
+        fetchDailyClasses();
+    }, []);
+
+    // ---------- HANDLER: UPDATE USER NAME ----------
     const updateName = async () => {
         if (!authUserId) return;
 
@@ -72,6 +108,7 @@ export default function Home() {
         }
     };
 
+    // ---------- HANDLER: LOGOUT ----------
     const logout = async () => {
         await supabase.auth.signOut();
         navigate("/login");
@@ -81,16 +118,17 @@ export default function Home() {
 
     const isAdmin = user.site_roles.includes("Admin");
 
+    // ---------- SITE NAVIGATION SECTIONS ----------
     const siteSections = [
         { title: "לוח בקרה", path: "/Dashboard" },
-        { title: 'לו"ז', path: "/Schedule" },
+        { title: "לו\"ז", path: "/Schedule" },
         { title: "ניהול מפתחות", path: "/ManageKeys" },
         { title: "הקצאת מפתחות", path: "/AllocateKeys" },
     ];
 
     return (
         <Box minHeight="100vh" dir="rtl" bgcolor="#f8fafc">
-            {/* Top Bar */}
+            {/* Top App Bar */}
             <AppBar
                 position="sticky"
                 sx={{
@@ -153,14 +191,9 @@ export default function Home() {
             </AppBar>
 
             <Container maxWidth="lg" sx={{ py: 6 }}>
-                {/* Greeting */}
+                {/* Greeting Section */}
                 <Box textAlign="center" mb={6}>
-                    <Box
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                        gap={1}
-                    >
+                    <Box display="flex" justifyContent="center" alignItems="center" gap={1}>
                         <Typography variant="h3" fontWeight={700}>
                             שלום {user.full_name}
                         </Typography>
@@ -180,7 +213,7 @@ export default function Home() {
                     </Box>
                 </Box>
 
-                {/* Username Edit */}
+                {/* Username Edit Section */}
                 {editingName && (
                     <Box maxWidth={400} mx="auto" mb={6}>
                         <Card sx={{ p: 3 }}>
@@ -205,9 +238,22 @@ export default function Home() {
                     </Box>
                 )}
 
-                {/* Future Section */}
+                {/* Missions + Today’s Schedule */}
                 <Box mt={8}>
-                    <UnifiedPlanner />
+                    <Grid container spacing={4}>
+                        {/* Unified Monthly Planner */}
+                        <Grid item xs={12} md={6}>
+                            <UnifiedPlanner />
+                        </Grid>
+
+                        {/* Daily Classes for Today */}
+                        <Grid item xs={12} md={6}>
+                            <Typography variant="h5" fontWeight={600} mb={2}>
+                                לו"ז יומי
+                            </Typography>
+                            <DailySchedule classes={dailyClasses} />
+                        </Grid>
+                    </Grid>
                 </Box>
             </Container>
         </Box>
