@@ -1,3 +1,15 @@
+/**
+ * HomePage.jsx
+ * 
+ * Main landing page after login.
+ * Shows:
+ * 1. Greeting + user info
+ * 2. Site navigation
+ * 3. Missions (monthly tasks) via UnifiedPlanner
+ * 4. Daily classes schedule for today
+ * 5. Username editing and logout functionality
+ */
+
 import {
     AppBar,
     Box,
@@ -12,26 +24,37 @@ import { Settings, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../lib/supabaseClient";
+
+// Components
 import UnifiedPlanner from "components/UnifiedPlanner/UnifiedPlanner";
 import DailySchedule from "components/DailySchedule/DailySchedule";
 
+const getAllGroupIds = (mainGroupId) => {
+    // TODO: add the group's parent groups as well to the array.
+    return [mainGroupId]
+}
+
 export default function HomePage() {
-    const [user, setUser] = useState(null);
+    // ---------- STATE ----------
+    const [user, setUser] = useState(null);           // Authenticated user info
     const [authUserId, setAuthUserId] = useState(null);
+    const [authUserGroupIds, setAuthUserGroupIds] = useState(null);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState("");
-    const [dailyClasses, setDailyClasses] = useState([]);
+    const [dailyClasses, setDailyClasses] = useState([]); // Today’s lessons
 
     const navigate = useNavigate();
 
-    // Fetch user info
+    // ---------- EFFECT 1: FETCH USER DATA ----------
     useEffect(() => {
         const fetchUser = async () => {
             const { data: authData, error } = await supabase.auth.getUser();
             if (error || !authData?.user) return;
 
             setAuthUserId(authData.user.id);
+            setAuthUserGroupIds(getAllGroupIds(authData.user.group_id));
 
+            // Fetch user record and roles
             const { data, error: error2 } = await supabase
                 .from("users")
                 .select(`full_name, roles!user_roles(name)`)
@@ -52,14 +75,15 @@ export default function HomePage() {
         fetchUser();
     }, []);
 
-    // Fetch daily classes for today
+    // ---------- EFFECT 2: FETCH TODAY'S DAILY CLASSES ----------
     useEffect(() => {
         const fetchDailyClasses = async () => {
             const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
             const { data, error } = await supabase
-                .from("daily_classes")
+                .from("schedule_lessons")
                 .select("*")
                 .eq("date", today)
+                .in("id", authUserGroupIds)
                 .order("start_time", { ascending: true });
 
             if (!error) setDailyClasses(data);
@@ -69,6 +93,7 @@ export default function HomePage() {
         fetchDailyClasses();
     }, []);
 
+    // ---------- HANDLER: UPDATE USER NAME ----------
     const updateName = async () => {
         if (!authUserId) return;
 
@@ -83,6 +108,7 @@ export default function HomePage() {
         }
     };
 
+    // ---------- HANDLER: LOGOUT ----------
     const logout = async () => {
         await supabase.auth.signOut();
         navigate("/login");
@@ -92,16 +118,17 @@ export default function HomePage() {
 
     const isAdmin = user.site_roles.includes("Admin");
 
+    // ---------- SITE NAVIGATION SECTIONS ----------
     const siteSections = [
         { title: "לוח בקרה", path: "/Dashboard" },
-        { title: 'לו"ז', path: "/Schedule" },
+        { title: "לו\"ז", path: "/Schedule" },
         { title: "ניהול מפתחות", path: "/ManageKeys" },
         { title: "הקצאת מפתחות", path: "/AllocateKeys" },
     ];
 
     return (
         <Box minHeight="100vh" dir="rtl" bgcolor="#f8fafc">
-            {/* Top Bar */}
+            {/* Top App Bar */}
             <AppBar
                 position="sticky"
                 sx={{
@@ -164,14 +191,9 @@ export default function HomePage() {
             </AppBar>
 
             <Container maxWidth="lg" sx={{ py: 6 }}>
-                {/* Greeting */}
+                {/* Greeting Section */}
                 <Box textAlign="center" mb={6}>
-                    <Box
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                        gap={1}
-                    >
+                    <Box display="flex" justifyContent="center" alignItems="center" gap={1}>
                         <Typography variant="h3" fontWeight={700}>
                             שלום {user.full_name}
                         </Typography>
@@ -191,7 +213,7 @@ export default function HomePage() {
                     </Box>
                 </Box>
 
-                {/* Username Edit */}
+                {/* Username Edit Section */}
                 {editingName && (
                     <Box maxWidth={400} mx="auto" mb={6}>
                         <Card sx={{ p: 3 }}>
@@ -216,12 +238,15 @@ export default function HomePage() {
                     </Box>
                 )}
 
-                {/* Missions + Daily Schedule */}
+                {/* Missions + Today’s Schedule */}
                 <Box mt={8}>
                     <Grid container spacing={4}>
-                        <UnifiedPlanner />
+                        {/* Unified Monthly Planner */}
+                        <Grid item xs={12} md={6}>
+                            <UnifiedPlanner />
+                        </Grid>
 
-                        {/* Daily Classes */}
+                        {/* Daily Classes for Today */}
                         <Grid item xs={12} md={6}>
                             <Typography variant="h5" fontWeight={600} mb={2}>
                                 לו"ז יומי
