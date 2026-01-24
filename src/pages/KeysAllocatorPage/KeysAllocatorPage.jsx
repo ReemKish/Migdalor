@@ -210,7 +210,7 @@ const KeysAllocator = () => {
           for (const key of keysData || []) {
             if (key.assigned_group_id) {
               const isInGdud = await isGroupInUserGdud(key.assigned_group_id);
-              if (isInGdud) {
+              if (isInGdud || key.assigned_group_id === userGdudId) {
                 filteredKeysData.push(key);
               }
             }
