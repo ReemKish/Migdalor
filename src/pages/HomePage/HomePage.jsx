@@ -1,261 +1,163 @@
-/**
- * HomePage.jsx
- * 
- * Main landing page after login.
- * Shows:
- * 1. Greeting + user info
- * 2. Site navigation
- * 3. Missions (monthly tasks) via UnifiedPlanner
- * 4. Daily classes schedule for today
- * 5. Username editing and logout functionality
- */
-
-import {
-    AppBar,
-    Box,
-    Card,
-    Container,
-    Grid,
-    IconButton,
-    Toolbar,
-    Typography,
-} from "@mui/material";
-import { Settings, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
-import { supabase } from "../../lib/supabaseClient";
+import { Box, Card, Container, Grid, Typography } from '@mui/material';
+import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router'; // שימוש במידע מה-Layout
+import { supabase } from 'lib/supabaseClient';
 
 // Components
-import UnifiedPlanner from "components/UnifiedPlanner/UnifiedPlanner";
-import DailySchedule from "components/DailySchedule/DailySchedule";
+import UnifiedPlanner from 'components/UnifiedPlanner/UnifiedPlanner';
+import DailySchedule from 'components/DailySchedule/DailySchedule';
 
-const getAllGroupIds = (mainGroupId) => {
-    // TODO: add the group's parent groups as well to the array.
-    return [mainGroupId]
-}
+export default function Home() {
+    // שליפת המידע המשותף שהגיע מ-MainLayout
+    const { user, isDark, authUserGroupIds } = useOutletContext();
+    const [dailyClasses, setDailyClasses] = useState([]); 
 
-export default function HomePage() {
-    // ---------- STATE ----------
-    const [user, setUser] = useState(null);           // Authenticated user info
-    const [authUserId, setAuthUserId] = useState(null);
-    const [authUserGroupIds, setAuthUserGroupIds] = useState(null);
-    const [editingName, setEditingName] = useState(false);
-    const [newName, setNewName] = useState("");
-    const [dailyClasses, setDailyClasses] = useState([]); // Today’s lessons
-
-    const navigate = useNavigate();
-
-    // ---------- EFFECT 1: FETCH USER DATA ----------
+    // שליפת השיעורים היומיים (לוגיקה ספציפית לעמוד זה)
     useEffect(() => {
-        const fetchUser = async () => {
-            const { data: authData, error } = await supabase.auth.getUser();
-            if (error || !authData?.user) return;
+        if (!authUserGroupIds) return;
 
-            setAuthUserId(authData.user.id);
-            setAuthUserGroupIds(getAllGroupIds(authData.user.group_id));
-
-            // Fetch user record and roles
-            const { data, error: error2 } = await supabase
-                .from("users")
-                .select(`full_name, roles!user_roles(name)`)
-                .eq("id", authData.user.id)
-                .single();
-
-            if (!error2 && data) {
-                setUser({
-                    full_name: data.full_name,
-                    site_roles: data.roles?.map((r) => r.name) ?? [],
-                });
-                setNewName(data.full_name);
-            } else {
-                console.error("Error fetching user data:", error2);
-            }
-        };
-
-        fetchUser();
-    }, []);
-
-    // ---------- EFFECT 2: FETCH TODAY'S DAILY CLASSES ----------
-    useEffect(() => {
         const fetchDailyClasses = async () => {
-            const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
             const { data, error } = await supabase
-                .from("schedule_lessons")
-                .select("*")
-                .eq("date", today)
-                .in("id", authUserGroupIds)
-                .order("start_time", { ascending: true });
+                .from('schedule_lessons')
+                .select('*')
+                .eq('date', today)
+                .in('group_id', authUserGroupIds)
+                .order('start_time', { ascending: true });
 
             if (!error) setDailyClasses(data);
-            else console.error("Error fetching daily classes:", error);
+            else console.error('Error fetching daily classes:', error);
         };
 
         fetchDailyClasses();
-    }, []);
+    }, [authUserGroupIds]);
 
-    // ---------- HANDLER: UPDATE USER NAME ----------
-    const updateName = async () => {
-        if (!authUserId) return;
-
-        const { error } = await supabase
-            .from("users")
-            .update({ full_name: newName })
-            .eq("id", authUserId);
-
-        if (!error) {
-            setUser((prev) => ({ ...prev, full_name: newName }));
-            setEditingName(false);
-        }
-    };
-
-    // ---------- HANDLER: LOGOUT ----------
-    const logout = async () => {
-        await supabase.auth.signOut();
-        navigate("/login");
-    };
-
-    if (!user) return <p>Loading...</p>;
-
-    const isAdmin = user.site_roles.includes("Admin");
-
-    // ---------- SITE NAVIGATION SECTIONS ----------
-    const siteSections = [
-        { title: "לוח בקרה", path: "/Dashboard" },
-        { title: "לו\"ז", path: "/Schedule" },
-        { title: "ניהול מפתחות", path: "/ManageKeys" },
-        { title: "הקצאת מפתחות", path: "/AllocateKeys" },
-    ];
+    // אם עדיין אין משתמש (למרות שה-Layout אמור לטפל בזה), לא נציג כלום או טעינה פשוטה
+    if (!user) return null;
 
     return (
-        <Box minHeight="100vh" dir="rtl" bgcolor="#f8fafc">
-            {/* Top App Bar */}
-            <AppBar
-                position="sticky"
-                sx={{
-                    bgcolor: "white",
-                    boxShadow: "none",
-                    borderBottom: "1px solid #e5e7eb",
-                }}
+        <Container maxWidth="lg" sx={{ py: 6 }}>
+            {/* Hero Section - הודעת שלום */}
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
             >
-                <Toolbar sx={{ maxWidth: 1280, mx: "auto", width: "100%" }}>
-                    {/* RIGHT: Logo */}
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Box
-                            component="img"
-                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693b00a201212578d09f8396/9732960ed_8.png"
-                            alt="logo"
-                            sx={{ width: 40 }}
-                        />
-                        <Typography fontWeight={700}>מגדלור</Typography>
-                    </Box>
-
-                    {/* CENTER: Site Sections */}
+                <Box sx={{ textAlign: 'center', mb: 6 }}>
                     <Box
+                        component="img"
+                        src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693b00a201212578d09f8396/2f970d938_9.png"
+                        alt="מגדלור לוגו"
+                        sx={{ width: 96, height: 96, objectFit: 'contain', mx: 'auto', mb: 3 }}
+                    />
+
+                    <Typography
+                        variant="h3"
                         sx={{
-                            flexGrow: 1,
-                            display: "flex",
-                            justifyContent: "center",
-                            gap: 3,
+                            fontWeight: 700,
+                            color: isDark ? 'white' : '#1e293b',
+                            mb: 1.5,
+                            textAlign: 'center',
+                            direction: 'rtl'
                         }}
                     >
-                        {siteSections.map((section) => (
-                            <Link
-                                key={section.title}
-                                to={section.path}
-                                style={{ textDecoration: "none" }}
+                        שלום {user.full_name} 👋
+                    </Typography>
+                    <Typography
+                        variant="h6"
+                        sx={{
+                            color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569',
+                            textAlign: 'center',
+                            direction: 'rtl'
+                        }}
+                    >
+                        מגדלור, כאן בשבילך 🙂
+                    </Typography>
+                    <Typography
+                        sx={{
+                            color: isDark ? 'rgba(255, 255, 255, 0.6)' : '#64748b',
+                            mt: 1,
+                            textAlign: 'center',
+                            direction: 'rtl'
+                        }}
+                    >
+                        ״כשהאור תמיד דולק, הדרך ברורה.״
+                    </Typography>
+                </Box>
+            </motion.div>
+
+            {/* Missions + Today's Schedule */}
+            <Box mt={8}>
+                <Grid container spacing={4}>
+                    {/* Unified Monthly Planner */}
+                    <Grid item xs={12} md={6}>
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.2 }}
+                        >
+                            <Card
+                                sx={{
+                                    p: 3,
+                                    background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                                    backdropFilter: 'blur(20px)',
+                                    borderRadius: '24px',
+                                    border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                                    boxShadow: isDark ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                }}
                             >
                                 <Typography
+                                    variant="h5"
                                     sx={{
                                         fontWeight: 600,
-                                        color: "#1e293b",
-                                        "&:hover": { color: "#2563eb" },
+                                        mb: 3,
+                                        color: isDark ? 'white' : '#1e293b',
+                                        textAlign: 'right',
+                                        direction: 'rtl'
                                     }}
                                 >
-                                    {section.title}
+                                    📋 משימות חודשיות
                                 </Typography>
-                            </Link>
-                        ))}
-                    </Box>
-
-                    {/* LEFT: Settings + Logout */}
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <IconButton onClick={() => setEditingName(true)}>
-                            <Settings size={20} />
-                        </IconButton>
-
-                        <IconButton onClick={logout}>
-                            <LogOut size={20} />
-                        </IconButton>
-                    </Box>
-                </Toolbar>
-            </AppBar>
-
-            <Container maxWidth="lg" sx={{ py: 6 }}>
-                {/* Greeting Section */}
-                <Box textAlign="center" mb={6}>
-                    <Box display="flex" justifyContent="center" alignItems="center" gap={1}>
-                        <Typography variant="h3" fontWeight={700}>
-                            שלום {user.full_name}
-                        </Typography>
-
-                        <Typography
-                            sx={{
-                                px: 1.5,
-                                py: 0.5,
-                                borderRadius: "999px",
-                                fontSize: 14,
-                                bgcolor: isAdmin ? "#fee2e2" : "#e0f2fe",
-                                color: isAdmin ? "#991b1b" : "#075985",
-                            }}
-                        >
-                            {user.site_roles?.join(", ")}
-                        </Typography>
-                    </Box>
-                </Box>
-
-                {/* Username Edit Section */}
-                {editingName && (
-                    <Box maxWidth={400} mx="auto" mb={6}>
-                        <Card sx={{ p: 3 }}>
-                            <Typography fontWeight={600} mb={2}>
-                                ✏️ שינוי שם משתמש
-                            </Typography>
-                            <input
-                                value={newName}
-                                onChange={(e) => setNewName(e.target.value)}
-                                style={{
-                                    width: "100%",
-                                    padding: 8,
-                                    borderRadius: 6,
-                                    border: "1px solid #cbd5f5",
-                                }}
-                            />
-                            <Box mt={2} display="flex" gap={1}>
-                                <button onClick={updateName}>שמור</button>
-                                <button onClick={() => setEditingName(false)}>ביטול</button>
-                            </Box>
-                        </Card>
-                    </Box>
-                )}
-
-                {/* Missions + Today’s Schedule */}
-                <Box mt={8}>
-                    <Grid container spacing={4}>
-                        {/* Unified Monthly Planner */}
-                        <Grid item xs={12} md={6}>
-                            <UnifiedPlanner />
-                        </Grid>
-
-                        {/* Daily Classes for Today */}
-                        <Grid item xs={12} md={6}>
-                            <Typography variant="h5" fontWeight={600} mb={2}>
-                                לו"ז יומי
-                            </Typography>
-                            <DailySchedule classes={dailyClasses} />
-                        </Grid>
+                                <UnifiedPlanner />
+                            </Card>
+                        </motion.div>
                     </Grid>
-                </Box>
-            </Container>
-        </Box>
+
+                    {/* Daily Classes for Today */}
+                    <Grid item xs={12} md={6}>
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.3 }}
+                        >
+                            <Card
+                                sx={{
+                                    p: 3,
+                                    background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                                    backdropFilter: 'blur(20px)',
+                                    borderRadius: '24px',
+                                    border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                                    boxShadow: isDark ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                }}
+                            >
+                                <Typography
+                                    variant="h5"
+                                    sx={{
+                                        fontWeight: 600,
+                                        mb: 3,
+                                        color: isDark ? 'white' : '#1e293b',
+                                        textAlign: 'right',
+                                        direction: 'rtl'
+                                    }}
+                                >
+                                    📅 לו"ז יומי
+                                </Typography>
+                                <DailySchedule classes={dailyClasses} />
+                            </Card>
+                        </motion.div>
+                    </Grid>
+                </Grid>
+            </Box>
+        </Container>
     );
 }

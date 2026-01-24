@@ -34,7 +34,7 @@ const Schedule = () => {
     const [userProfile, setUserProfile] = useState(null);
     const [platoonNode, setPlatoonNode] = useState(null); // The Company/Platoon
     const [companySquads, setCompanySquads] = useState([]); // List of squads
-    
+
     const companyId = platoonNode?.id;
     const squadIds = React.useMemo(() => {
         return companySquads.map(squad => squad.id);
@@ -43,48 +43,52 @@ const Schedule = () => {
     // --- NEW: Group Name Lookup ---
     const groupNames = React.useMemo(() => {
         const map = {};
-        
+
         // 1. Add the Company Name
         if (platoonNode) {
             map[platoonNode.id] = platoonNode.name;
         }
-        
+
         // 2. Add all Squad Names
         companySquads.forEach(squad => {
             map[squad.id] = squad.name;
         });
-        
+
         return map;
     }, [platoonNode, companySquads]);
 
     const [lessons, setLessons] = useState([]);
     const [specialRequests, setSpecialRequests] = useState([]);
-    
+
     const [showModal, setShowModal] = useState(false);
     const [editingLesson, setEditingLesson] = useState(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-    
+
     // Loaders
     const [isUserLoading, setIsUserLoading] = useState(true);
     const [isLessonsLoading, setIsLessonsLoading] = useState(false);
 
+
     const [formData, setFormData] = useState({
-        crew_name: '',
+        team_id: '',
         start_time: '',
         end_time: '',
         room_type_needed: 'צוותי',
         needs_computers: false,
         notes: '',
+        room_count: 1,  // חדש - כמות כיתות
+
     });
 
     // --- HELPER FUNCTIONS ---
-
+    const isCompanySelected = formData.team_id === platoonNode?.id;
+    const maxRooms = companySquads.length;
     // 1. Traverse up to find Company (Type 3)
     const findUserCompany = async (startGroupId) => {
         let currentGroupId = startGroupId;
-        
+
         // Safety: Limit depth to prevent infinite loops
-        for(let i=0; i<10; i++) {
+        for (let i = 0; i < 10; i++) {
             if (!currentGroupId) return null;
 
             const { data: node, error } = await supabase
@@ -112,7 +116,7 @@ const Schedule = () => {
             .from('group_node')
             .select('*')
             .eq('parent_id', parentId);
-        
+
         return error ? [] : data;
     };
 
@@ -172,7 +176,7 @@ const Schedule = () => {
                     .eq('date', selectedDate);
 
                 if (error) throw error;
-                
+
                 setLessons(data || []);
                 setSpecialRequests(data || []); // Assuming specific logic separates them later if needed
             } catch (error) {
@@ -190,18 +194,24 @@ const Schedule = () => {
 
     // Filter Logic: Matches User's Group ID + Selected Date
     console.log("3. IDs of Groups in this Company (during filtering):", squadIds);
-    const visibleLessons = lessons.filter(lesson => 
+    const visibleLessons = lessons.filter(lesson =>
         userProfile && (
             // lesson.team_id === companyId ||     // Check if it matches the Company ID directly
             // squadIds.includes(lesson.team_id)   // Check if the team_id is inside the squadIds array
             true
         )
     );
+    const stats = React.useMemo(() => {
+        const total = visibleLessons.length;
+        const assigned = visibleLessons.filter(l => l.status === 2).length;  // 2 = assigned
+        const pending = visibleLessons.filter(l => l.status === 1 || l.status === null || l.status === undefined).length;  // 1 = pending
+        return { total, assigned, pending };
+    }, [visibleLessons]);
 
     // Misc Logic
     const now = new Date();
     const showMisdarAlert = now.getDay() === 3 && now.getHours() >= 9;
-    const canAddLessons = true; 
+    const canAddLessons = true;
     const myMisdarAssignments = [
         { roomNumber: '101', crewName: platoonNode?.name || '...', endTime: '18:00', manual: false },
         { roomNumber: '205', crewName: platoonNode?.name || '...', endTime: '19:00', manual: true },
@@ -209,30 +219,175 @@ const Schedule = () => {
 
     const getStatusChip = (status) => {
         const config = {
-            pending: { color: 'warning', label: 'ממתין', icon: <ClockIcon sx={{ fontSize: 16 }} /> },
-            assigned: { color: 'success', label: 'שובץ', icon: <CheckCircleIcon sx={{ fontSize: 16 }} /> },
-            completed: { color: 'default', label: 'הושלם', icon: <CheckCircleIcon sx={{ fontSize: 16 }} /> },
-            cancelled: { color: 'error', label: 'בוטל', icon: <XCircleIcon sx={{ fontSize: 16 }} /> },
+            1: {
+                bgcolor: '#fef9c3',
+                color: '#854d0e',
+                label: 'ממתין',
+                icon: <ClockIcon sx={{ fontSize: 16 }} />
+            },
+            2: {
+                bgcolor: '#d1fae5',
+                color: '#065f46',
+                label: 'שובץ',
+                icon: <CheckCircleIcon sx={{ fontSize: 16 }} />
+            },
         };
-        const { color, label, icon } = config[status] || config.pending;
-        return <Chip color={color} label={label} size="small" icon={icon} sx={{ fontWeight: 500 }} />;
+
+        const statusKey = status ?? 1; // אם null או undefined, תחזיר 1 (ממתין)
+        const { bgcolor, color, label, icon } = config[statusKey] || config[1];
+
+        return (
+            <Box sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.5,
+                bgcolor: bgcolor,
+                color: color,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 2,
+                fontSize: '0.875rem',
+                fontWeight: 500,
+            }}>
+                {label}
+                {icon}
+            </Box>
+        );
     };
 
-    // --- HANDLERS ---
-    const handleSubmit = () => {
-        console.log('Saving:', formData); 
-        setShowModal(false);
-        // In real app: await supabase.from('schedule_lessons').insert(...)
+    const handleSubmit = async () => {
+        // Validation
+        if (!formData.team_id) {
+            alert('יש לבחור צוות או פלוגה');
+            return;
+        }
+        if (!formData.start_time || !formData.end_time) {
+            alert('יש למלא שעת התחלה ושעת סיום');
+            return;
+        }
+        if (formData.end_time <= formData.start_time) {
+            alert('שעת הסיום חייבת להיות אחרי שעת ההתחלה');
+            return;
+        }
+        if (!editingLesson) {
+            const now = new Date();
+            const lessonDateTime = new Date(`${selectedDate}T${formData.start_time}`);
+            if (lessonDateTime < now) {
+                alert('לא ניתן לתזמן שיעור לשעה שכבר עברה');
+                return;
+            }
+        }
+
+        try {
+            const isCompany = formData.team_id === platoonNode?.id;
+
+            if (isCompany && formData.room_count > 1) {
+                // Insert multiple lessons - one for each squad
+                const squadsToInsert = companySquads.slice(0, formData.room_count);
+
+                const lessonsToInsert = squadsToInsert.map(squad => ({
+                    team_id: squad.id,
+                    date: selectedDate,
+                    start_time: formData.start_time,
+                    end_time: formData.end_time,
+                    needed_room_type_id: formData.room_type_needed === 'צוותי' ? 1 : 2,
+                    need_computer: formData.needs_computers,
+                    notes: formData.notes || null,
+                }));
+
+                const { error } = await supabase
+                    .from('schedule_lessons')
+                    .insert(lessonsToInsert);
+
+                if (error) throw error;
+            } else {
+                // Single lesson
+                const lessonData = {
+                    team_id: formData.team_id,
+                    date: selectedDate,
+                    start_time: formData.start_time,
+                    end_time: formData.end_time,
+                    needed_room_type_id: formData.room_type_needed === 'צוותי' ? 1 : 2,
+                    need_computer: formData.needs_computers,
+                    notes: formData.notes || null,
+                };
+
+                if (editingLesson) {
+                    const { error } = await supabase
+                        .from('schedule_lessons')
+                        .update(lessonData)
+                        .eq('id', editingLesson.id);
+
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabase
+                        .from('schedule_lessons')
+                        .insert(lessonData);
+
+                    if (error) throw error;
+                }
+            }
+
+            // Reset & close
+            setShowModal(false);
+            setEditingLesson(null);
+            setFormData({
+                team_id: '',
+                start_time: '',
+                end_time: '',
+                room_type_needed: 'צוותי',
+                needs_computers: false,
+                notes: '',
+                room_count: 1,
+            });
+
+            // Refresh
+            const { data } = await supabase
+                .from('schedule_lessons')
+                .select('*')
+                .eq('date', selectedDate);
+
+            setLessons(data || []);
+
+        } catch (error) {
+            console.error('Error saving lesson:', error);
+            alert('שגיאה בשמירת השיעור');
+        }
+    };
+    const handleDelete = async (lessonId) => {
+        if (!window.confirm('האם אתה בטוח שברצונך למחוק את השיעור?')) {
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('schedule_lessons')
+                .delete()
+                .eq('id', lessonId);
+
+            if (error) throw error;
+
+            // Refresh
+            const { data } = await supabase
+                .from('schedule_lessons')
+                .select('*')
+                .eq('date', selectedDate);
+
+            setLessons(data || []);
+        } catch (error) {
+            console.error('Error deleting lesson:', error);
+            alert('שגיאה במחיקת השיעור');
+        }
     };
 
     const handleEdit = (lesson) => {
         setEditingLesson(lesson);
         setFormData({
-            crew_name: lesson.crew_name || '',
-            start_time: lesson.start_time,
-            end_time: lesson.end_time,
-            room_type_needed: lesson.room_type_needed || 'צוותי',
-            needs_computers: lesson.needs_computers || false,
+            team_id: lesson.team_id || '',
+            start_time: lesson.start_time?.slice(0, 5) || '',
+            end_time: lesson.end_time?.slice(0, 5) || '',
+            room_type_needed: lesson.needed_room_type_id === 1 ? 'צוותי' : 'פלוגתי',
+            needs_computers: lesson.need_computer || false,
             notes: lesson.notes || '',
         });
         setShowModal(true);
@@ -259,8 +414,8 @@ const Schedule = () => {
                     </Typography>
                 </Box>
 
-                 {/* Misdar Alert */}
-                 {showMisdarAlert && myMisdarAssignments.length > 0 && (
+                {/* Misdar Alert */}
+                {showMisdarAlert && myMisdarAssignments.length > 0 && (
                     <Alert severity="warning" sx={{ mb: 3, bgcolor: '#fff7ed', border: '1px solid #fed7aa' }}>
                         <Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -284,24 +439,92 @@ const Schedule = () => {
                 )}
 
                 {/* Date & Add Button */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                    <TextField 
-                        type="date" 
-                        size="small" 
-                        value={selectedDate} 
-                        onChange={(e) => setSelectedDate(e.target.value)} 
-                    />
-                    {canAddLessons && (
-                        <Button 
-                            variant="contained" 
-                            startIcon={<PlusIcon />} 
-                            onClick={() => setShowModal(true)}
-                            sx={{ bgcolor: '#4f46e5' }}
-                        >
-                            הוסף שיעור
-                        </Button>
-                    )}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                    {/* Date Picker - Right Side */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 500 }}>בחר תאריך:</Typography>
+                        <TextField
+                            type="date"
+                            size="small"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            sx={{
+                                bgcolor: 'white',
+                                '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                            }}
+                        />
+                    </Box>
+
+                    {/* Add Button - Left Side */}
+                    <Box>
+                        {canAddLessons && (
+                            <Button
+                                variant="contained"
+                                startIcon={<PlusIcon />}
+                                onClick={() => setShowModal(true)}
+                                sx={{ bgcolor: '#4f46e5', borderRadius: 2 }}
+                            >
+                                הוסף שיעור
+                            </Button>
+                        )}
+                    </Box>
                 </Box>
+
+
+                {/* Statistics Cards */}
+                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                    {/* Total Lessons */}
+                    <Paper sx={{
+                        flex: 1,
+                        p: 2,
+                        borderRadius: 3,
+                        border: '1px solid #e5e7eb',
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ color: '#6b7280', mb: 0.5 }}>
+                            סה"כ שיעורים
+                        </Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#4f46e5' }}>
+                            {stats.total}
+                        </Typography>
+                    </Paper>
+
+                    {/* Assigned */}
+                    <Paper sx={{
+                        flex: 1,
+                        p: 2,
+                        borderRadius: 3,
+                        bgcolor: '#d1fae5',
+                        border: '1px solid #a7f3d0',
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ color: '#065f46', mb: 0.5 }}>
+                            שובצו
+                        </Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#065f46' }}>
+                            {stats.assigned}
+                        </Typography>
+                    </Paper>
+
+                    {/* Pending */}
+                    <Paper sx={{
+                        flex: 1,
+                        p: 2,
+                        borderRadius: 3,
+                        bgcolor: '#fef9c3',
+                        border: '1px solid #fde047',
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ color: '#854d0e', mb: 0.5 }}>
+                            ממתינים
+                        </Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#854d0e' }}>
+                            {stats.pending}
+                        </Typography>
+                    </Paper>
+                </Box>
+
+
 
                 {/* Table */}
                 <TableContainer component={Paper}>
@@ -329,16 +552,41 @@ const Schedule = () => {
                                 visibleLessons.map(lesson => (
                                     <TableRow key={lesson.id} hover>
                                         <TableCell align="center">{groupNames[lesson.team_id] || lesson.team_id}</TableCell>
-                                        <TableCell align="center">{lesson.start_time} - {lesson.end_time}</TableCell>
-                                        <TableCell align="center">{lesson.room_type_needed}</TableCell>
-                                        <TableCell align="center">{lesson.need_computer ? '💻' : '-'}</TableCell>
+                                        <TableCell align="center">
+                                            {lesson.start_time?.slice(0, 5)} - {lesson.end_time?.slice(0, 5)}
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            {lesson.needed_room_type_id === 1 ? '🏠 צוותי' : '🏢 פלוגתי'}
+                                        </TableCell>                                        <TableCell align="center">{lesson.need_computer ? '💻' : '-'}</TableCell>
                                         <TableCell align="center">{getStatusChip(lesson.status)}</TableCell>
-                                        <TableCell align="center">{lesson.room_number || '-'}</TableCell>
-                                        <TableCell align="center">-</TableCell>
+                                        <TableCell align="center">
+                                            {lesson.room_number ? (
+                                                <Box sx={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 0.5,
+                                                    bgcolor: '#e0e7ff',
+                                                    color: '#3730a3',
+                                                    px: 1.5,
+                                                    py: 0.5,
+                                                    borderRadius: 2,
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 500,
+                                                }}>
+                                                    חדר {lesson.room_number}
+                                                    <KeyIcon sx={{ fontSize: 16 }} />
+                                                </Box>
+                                            ) : '-'}
+                                        </TableCell>                                        <TableCell align="center">-</TableCell>
                                         <TableCell align="center">-</TableCell>
                                         <TableCell align="center">{lesson.notes || '-'}</TableCell>
                                         <TableCell align="center">
-                                            <IconButton size="small" onClick={() => handleEdit(lesson)}><Edit2Icon fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleEdit(lesson)}>
+                                                <Edit2Icon fontSize="small" />
+                                            </IconButton>
+                                            <IconButton size="small" color="error" onClick={() => handleDelete(lesson.id)}>
+                                                <Trash2Icon fontSize="small" />
+                                            </IconButton>
                                         </TableCell>
                                     </TableRow>
                                 ))
@@ -348,48 +596,247 @@ const Schedule = () => {
                 </TableContainer>
 
                 {/* MODAL */}
-                <Dialog open={showModal} onClose={() => setShowModal(false)} fullWidth maxWidth="sm" dir="rtl">
-                    <DialogTitle>הוסף שיעור</DialogTitle>
-                    <DialogContent dividers>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-                            <FormControl fullWidth>
-                                <InputLabel>החדר עבור</InputLabel>
-                                <Select 
-                                    value={formData.crew_name} 
-                                    onChange={(e) => setFormData({...formData, crew_name: e.target.value})}
-                                    label="החדר עבור"
-                                >
-                                    {companySquads.map(squad => (
-                                        <MenuItem key={squad.id} value={squad.name}>{squad.name}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            
+                <Dialog
+                    open={showModal}
+                    onClose={() => setShowModal(false)}
+                    fullWidth
+                    maxWidth="xs"  // שינוי מ-sm ל-xs כדי שיהיה יותר קטן
+                    dir="rtl"
+                    sx={{ '& .MuiDialog-paper': { direction: 'rtl', borderRadius: 3 } }}
+                >
+                    <DialogTitle sx={{ pb: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box sx={{ width: 24 }} />
+                            <Box sx={{ textAlign: 'center', flex: 1 }}>
+                                {/* אייקון וכותרת באותה שורה */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 0.5 }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 700 }}>הוסף שיעור</Typography>
+                                    <CalendarIcon sx={{ color: '#4f46e5', fontSize: 28 }} />
+
+                                </Box>
+                                <Typography variant="body2" color="text.secondary">
+                                    הוסף שיעור חדש ללוח הזמנים שלך ל-{new Date(selectedDate).toLocaleDateString('he-IL', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                </Typography>
+                            </Box>
+                            <IconButton onClick={() => setShowModal(false)} size="small">
+                                <CancelIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                    </DialogTitle>
+                    <DialogContent sx={{ pt: 2 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+
+                            {/* Team Selection */}
+                            <Box>
+                                <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                    החדר עבור *
+                                </Typography>
+                                <FormControl fullWidth size="small">
+                                    <Select
+                                        value={formData.team_id}
+                                        onChange={(e) => setFormData({ ...formData, team_id: e.target.value, room_count: 1 })}
+                                        displayEmpty
+                                        sx={{
+                                            bgcolor: '#f5f5f5',
+                                            borderRadius: 2,
+                                            '& .MuiSelect-select': { textAlign: 'right' }
+                                        }}
+                                        MenuProps={{
+                                            PaperProps: {
+                                                sx: { direction: 'rtl' }
+                                            }
+                                        }}
+                                    >
+                                        <MenuItem value="" disabled>בחר פלוגה או צוות...</MenuItem>
+                                        {platoonNode && (
+                                            <MenuItem value={platoonNode.id}>
+                                                {platoonNode.name} (פלוגה) 🏢
+                                            </MenuItem>
+                                        )}
+                                        {companySquads.map(squad => (
+                                            <MenuItem key={squad.id} value={squad.id}>
+                                                {squad.name} 👥
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Box>
+
+                            {/* Room Count - only show if company is selected */}
+                            {isCompanySelected && (
+                                <Box>
+                                    <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                        כמות כיתות
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => setFormData({ ...formData, room_count: Math.min(formData.room_count + 1, maxRooms) })}
+                                            sx={{ border: '1px solid #ddd', borderRadius: 2 }}
+                                        >
+                                            <AddIcon fontSize="small" />
+                                        </IconButton>
+                                        <TextField
+                                            value={formData.room_count}
+                                            size="small"
+                                            inputProps={{
+                                                style: { textAlign: 'center' },
+                                                readOnly: true
+                                            }}
+                                            sx={{
+                                                flex: 1,
+                                                bgcolor: '#f5f5f5',
+                                                '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                                            }}
+                                        />
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => setFormData({ ...formData, room_count: Math.max(formData.room_count - 1, 1) })}
+                                            sx={{ border: '1px solid #ddd', borderRadius: 2 }}
+                                        >
+                                            <Typography sx={{ fontWeight: 'bold', fontSize: '1.2rem' }}>−</Typography>
+                                        </IconButton>
+                                    </Box>
+                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                        מקסימום: {maxRooms} צוותים בפלוגה
+                                    </Typography>
+                                </Box>
+                            )}
+
+                            {/* Time Pickers */}
+                            {/* Time Pickers */}
                             <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                <Grid container spacing={2}>
-                                    <Grid item xs={6}>
-                                        <TimePicker 
-                                            label="התחלה" 
+                                <Box sx={{ display: 'flex', gap: 2, width: '100%' }}>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                            שעת התחלה *
+                                        </Typography>
+                                        <TimePicker
                                             ampm={false}
                                             value={formData.start_time ? dayjs(formData.start_time, 'HH:mm') : null}
-                                            onChange={(val) => setFormData({...formData, start_time: val ? val.format('HH:mm') : ''})}
+                                            onChange={(val) => setFormData({ ...formData, start_time: val ? val.format('HH:mm') : '' })}
+                                            sx={{ width: '100%' }}
+                                            slotProps={{
+                                                textField: {
+                                                    fullWidth: true,
+                                                    size: 'small',
+                                                    sx: {
+                                                        width: '100%',
+                                                        bgcolor: '#f5f5f5',
+                                                        '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                                                    }
+                                                }
+                                            }}
                                         />
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <TimePicker 
-                                            label="סיום" 
+                                    </Box>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                            שעת סיום *
+                                        </Typography>
+                                        <TimePicker
                                             ampm={false}
                                             value={formData.end_time ? dayjs(formData.end_time, 'HH:mm') : null}
-                                            onChange={(val) => setFormData({...formData, end_time: val ? val.format('HH:mm') : ''})}
+                                            onChange={(val) => setFormData({ ...formData, end_time: val ? val.format('HH:mm') : '' })}
+                                            sx={{ width: '100%' }}
+                                            slotProps={{
+                                                textField: {
+                                                    fullWidth: true,
+                                                    size: 'small',
+                                                    sx: {
+                                                        width: '100%',
+                                                        bgcolor: '#f5f5f5',
+                                                        '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                                                    }
+                                                }
+                                            }}
                                         />
-                                    </Grid>
-                                </Grid>
+                                    </Box>
+                                </Box>
                             </LocalizationProvider>
+
+                            {/* Room Type Selection */}
+                            <Box>
+                                <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                    סוג חדר נדרש *
+                                </Typography>
+                                <FormControl fullWidth size="small">
+                                    <Select
+                                        value={formData.room_type_needed}
+                                        onChange={(e) => setFormData({ ...formData, room_type_needed: e.target.value })}
+                                        sx={{
+                                            bgcolor: '#f5f5f5',
+                                            borderRadius: 2,
+                                            '& .MuiSelect-select': { textAlign: 'right' }
+                                        }}
+                                        MenuProps={{
+                                            PaperProps: {
+                                                sx: { direction: 'rtl' }
+                                            }
+                                        }}
+                                    >
+                                        <MenuItem value="צוותי">צוותי 🏠</MenuItem>
+                                        <MenuItem value="פלוגתי">פלוגתי 🏢</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Box>
+
+                            {/* Needs Computer Checkbox */}
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={formData.needs_computers}
+                                        onChange={(e) => setFormData({ ...formData, needs_computers: e.target.checked })}
+                                        size="small"
+                                    />
+                                }
+                                label="דורש כיתה עם מחשב 🖥️"
+                                sx={{
+                                    margin: 0,
+                                    // flexDirection: 'row-reverse',
+                                    justifyContent: 'flex-start',
+                                    '& .MuiFormControlLabel-label': { mr: 0, ml: 1, fontSize: '0.875rem' }
+                                }}
+                            />
+
+                            {/* Notes */}
+                            <Box>
+                                <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                                    הערות (אופציונלי)
+                                </Typography>
+                                <TextField
+                                    placeholder="דרישות מיוחדות..."
+                                    multiline
+                                    rows={2}
+                                    size="small"
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    fullWidth
+                                    sx={{
+                                        bgcolor: '#f5f5f5',
+                                        '& .MuiOutlinedInput-root': { borderRadius: 2 }
+                                    }}
+                                />
+                            </Box>
                         </Box>
                     </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setShowModal(false)}>ביטול</Button>
-                        <Button variant="contained" onClick={handleSubmit}>שמור</Button>
+                    <DialogActions sx={{ p: 2, pt: 1, gap: 1 }}>
+                        <Button
+                            variant="contained"
+                            onClick={handleSubmit}
+                            fullWidth
+                            sx={{ bgcolor: '#4f46e5', borderRadius: 2, py: 1 }}
+                        >
+                            {editingLesson ? 'עדכן שיעור' : 'הוסף שיעור'}
+                        </Button>
+                        <Button
+                            onClick={() => setShowModal(false)}
+                            variant="outlined"
+                            fullWidth
+                            sx={{ borderRadius: 2, py: 1 }}
+                        >
+                            ביטול
+                        </Button>
                     </DialogActions>
                 </Dialog>
             </Container>

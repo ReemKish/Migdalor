@@ -1,22 +1,82 @@
+import {
+  Box,
+  Button,
+  Card,
+  Container,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+  Chip,
+  CircularProgress
+} from '@mui/material';
+import { motion } from 'framer-motion';
+import {
+  Key,
+  CheckCircle,
+  Clock,
+  Calendar,
+  ArrowLeft,
+  ArrowRight
+} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router';
 import { BAHAD_GROUP_KEY_ID } from 'lib/consts';
 import { supabase } from 'lib/supabaseClient';
-import React, { useEffect, useState } from 'react';
-
 
 export default function KeyRequestsPage() {
+  // מקבלים את מצב העיצוב מה-Layout
+  const { isDark } = useOutletContext();
+
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedWednesday, setSelectedWednesday] = useState('');
+  const [wednesdayOffset, setWednesdayOffset] = useState(0);
 
   useEffect(() => {
     fetchRequests();
   }, []);
 
-  /**
- * Finds a specific ancestor group by its type (e.g., 'Battalion', 'Company')
- * @param {number} startGroupId - The ID of the group to start searching from (e.g., user.group_id)
- * @param {string} targetTypeName - The name of the group_type you are looking for
- * @returns {Object|null} - Returns the group object if found, otherwise null
- */
+  useEffect(() => {
+    if (wednesdayOffset >= 0) {
+      const targetWednesday = getNextWednesday(wednesdayOffset);
+      setSelectedWednesday(targetWednesday.toISOString().split('T')[0]);
+    }
+  }, [wednesdayOffset]);
+
+  const getNextWednesday = (weeksFromNow) => {
+    const today = new Date();
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + (14 + (weeksFromNow * 7))); // Start from 2 weeks, add 7 days per offset
+
+    // Get the day of week (0 = Sunday, 3 = Wednesday)
+    const dayOfWeek = targetDate.getDay();
+
+    // Calculate days until Wednesday
+    let daysUntilWednesday = (3 - dayOfWeek + 7) % 7;
+    if (daysUntilWednesday === 0 && targetDate.getDay() !== 3) {
+      daysUntilWednesday = 7;
+    }
+
+    const nextWednesday = new Date(targetDate);
+    nextWednesday.setDate(targetDate.getDate() + daysUntilWednesday);
+
+    return nextWednesday;
+  };
+
+  const handleNextWednesday = () => {
+    setWednesdayOffset(prev => prev + 1);
+  };
+
+  const handlePreviousWednesday = () => {
+    if (wednesdayOffset > 0) {
+      setWednesdayOffset(prev => prev - 1);
+    }
+  };
+
   const fetchAncestorGroup = async (startGroupId, targetTypeName) => {
     try {
       const { data, error } = await supabase
@@ -30,30 +90,23 @@ export default function KeyRequestsPage() {
         return null;
       }
 
-      // data is returned as an array of rows. 
-      // Since our SQL uses LIMIT 1, we just need the first item.
       return data && data.length > 0 ? data[0] : null;
-
     } catch (err) {
       console.error("Unexpected Error:", err);
       return null;
     }
   };
 
-
   async function fetchRequests() {
     setLoading(true);
-    // 1. Fetch the requests
     const { data, error } = await supabase
       .from('keys_request')
       .select('*, requester (id, name)')
-      .order('created_at', { ascending: false });
+      .order('range_start', { ascending: true });
 
     if (error) {
       console.error(error);
     } else {
-      // 2. Map through requests and fetch the Battalion for each one
-      // We use Promise.all to do this efficiently in parallel
       const requestsWithBattalion = await Promise.all(
         data.map(async (req) => {
           const { data: battalionData } = await supabase.rpc('get_parent_group_by_type', {
@@ -80,7 +133,6 @@ export default function KeyRequestsPage() {
     setLoading(true);
 
     try {
-      // 1. Fetch ALL available keys
       const { data: availableKeys, error: keyErr } = await supabase
         .from('keysmanager_keys')
         .select('*')
@@ -88,12 +140,14 @@ export default function KeyRequestsPage() {
 
       if (keyErr) throw keyErr;
 
-      // 2. Filter keys by category
       let smallKeys = availableKeys.filter(k => k.room_type_id === 1);
       let largeKeys = availableKeys.filter(k => k.room_type_id === 2);
 
-      // 3. Get pending requests
-      const pending = requests.filter(r => r.status === 'pending');
+      const pending = requests.filter(r =>
+        r.status === 'pending' &&
+        r.range_start === selectedWednesday
+      );
+
       if (!pending.length) {
         alert("אין בקשות ממתינות.");
         return;
@@ -101,42 +155,65 @@ export default function KeyRequestsPage() {
 
       const updates = [];
       const battalionMap = {};
+      const requestUpdates = [];
 
-      // 4. Process each request
       for (const req of pending) {
-        // Resolve Battalion ID (Ancestor)
         if (!battalionMap[req.requester.id]) {
           const ancestor = await fetchAncestorGroup(req.requester.id, "Battalion");
           battalionMap[req.requester.id] = ancestor ? ancestor.id : req.requester.id;
         }
         const targetGroupId = battalionMap[req.requester.id];
 
-        // Calculate how many keys this request needs
-        // Note: single_team and two_team both usually take 'צוותי' rooms
-        console.log("request: ", req)
         const needsSmall = (req.single_team_amount || 0) + (req.two_team_amount || 0);
         const needsLarge = (req.company_amount || 0);
 
-        console.log(`group ${targetGroupId} needs ${needsSmall} smalll and ${needsLarge} large`)
+        let assignedSmall = 0;
+        let assignedLarge = 0;
 
-        // Assign Small Keys
         for (let i = 0; i < needsSmall; i++) {
           if (smallKeys.length > 0) {
-            const key = smallKeys.shift(); // Remove from available pool
-            updates.push({ id: key.id, assigned_group_id: targetGroupId, created_at: key.created_at, status: key.status, room_number: key.room_number, has_computers: key.has_computers });
+            const key = smallKeys.shift();
+            updates.push({
+              id: key.id,
+              assigned_group_id: targetGroupId,
+              created_at: key.created_at,
+              status: key.status,
+              room_number: key.room_number,
+              has_computers: key.has_computers
+            });
+            assignedSmall++;
           }
         }
 
-        // Assign Large Keys
         for (let i = 0; i < needsLarge; i++) {
           if (largeKeys.length > 0) {
-            const key = largeKeys.shift(); // Remove from available pool
-            updates.push({ id: key.id, assigned_group_id: targetGroupId, created_at: key.created_at, status: key.status, room_number: key.room_number, has_computers: key.has_computers });
+            const key = largeKeys.shift();
+            updates.push({
+              id: key.id,
+              assigned_group_id: targetGroupId,
+              created_at: key.created_at,
+              status: key.status,
+              room_number: key.room_number,
+              has_computers: key.has_computers
+            });
+            assignedLarge++;
           }
         }
+
+        // Calculate missing rooms
+        const missingSmall = needsSmall - assignedSmall;
+        const missingLarge = needsLarge - assignedLarge;
+        const totalMissing = missingSmall + missingLarge;
+
+        requestUpdates.push({
+          id: req.id,
+          status: 'approved',
+          missing_rooms: totalMissing,
+          missing_small_rooms: missingSmall,
+          missing_large_rooms: missingLarge
+        });
       }
 
-      // 5. Execute Updates
       if (updates.length > 0) {
         const { error: upsertErr } = await supabase
           .from('keysmanager_keys')
@@ -144,9 +221,17 @@ export default function KeyRequestsPage() {
         if (upsertErr) throw upsertErr;
       }
 
-      // 6. Mark requests as approved
-      const requestIds = pending.map(r => r.id);
-      await supabase.from('keys_request').update({ status: 'approved' }).in('id', requestIds);
+      for (const reqUpdate of requestUpdates) {
+        await supabase
+          .from('keys_request')
+          .update({
+            status: reqUpdate.status,
+            missing_rooms: reqUpdate.missing_rooms,
+            missing_small_rooms: reqUpdate.missing_small_rooms,
+            missing_large_rooms: reqUpdate.missing_large_rooms
+          })
+          .eq('id', reqUpdate.id);
+      }
 
       alert(`הוקצו ${updates.length} מפתחות בהצלחה.`);
       fetchRequests();
@@ -159,113 +244,387 @@ export default function KeyRequestsPage() {
     }
   }
 
-  // async function handleDistributeEqually() {
-  //   const confirm = window.confirm("Assign all available keys equally to the Requester's Battalion?");
-  //   if (!confirm) return;
-  //
-  //   setLoading(true);
-  //
-  //   try {
-  //     // 1. Fetch available keys
-  //     const { data: availableKeys, error: keyErr } = await supabase
-  //       .from('keysmanager_keys')
-  //       .select('*')
-  //       .eq('assigned_group_id', BAHAD_GROUP_KEY_ID);
-  //
-  //     // 2. Fetch pending requests
-  //     const pending = requests.filter(r => r.status === 'pending');
-  //
-  //     if (keyErr || !availableKeys.length || !pending.length) {
-  //       alert("No keys available or no pending requests.");
-  //       return;
-  //     }
-  //
-  //     // 3. NEW: Resolve the Battalion IDs for all unique requesters first
-  //     // This prevents calling the RPC 50 times for the same group
-  //     const battalionMap = {};
-  //     for (const req of pending) {
-  //       const requesterId = req.requester.id;
-  //       if (!battalionMap[requesterId]) {
-  //         const ancestor = await fetchAncestorGroup(requesterId, "Battalion");
-  //         // Fallback to the requester ID if no battalion is found
-  //         battalionMap[requesterId] = ancestor ? ancestor.id : requesterId;
-  //       }
-  //     }
-  //
-  //     // 4. Create the updates using the resolved Battalion IDs
-  //     const updates = availableKeys.map((key, index) => {
-  //       const targetRequest = pending[index % pending.length];
-  //       const targetBattalionId = battalionMap[targetRequest.requester.id];
-  //
-  //       return {
-  //         id: key.id,
-  //         assigned_group_id: targetBattalionId, // Now correctly assigned to Battalion
-  //         room_number: key.room_number,
-  //         has_computers: key.has_computers,
-  //         status: 'occupied', // Optional: update status to occupied
-  //       };
-  //     });
-  //
-  //     // 5. Batch Update keys
-  //     const { error: upsertErr } = await supabase.from('keysmanager_keys').upsert(updates);
-  //     if (upsertErr) throw upsertErr;
-  //
-  //     // 6. Approve the requests
-  //     const requestIds = pending.map(r => r.id);
-  //     await supabase.from('keys_request').update({ status: 'approved' }).in('id', requestIds);
-  //
-  //     alert(`Distributed ${availableKeys.length} keys to Battalions.`);
-  //     fetchRequests();
-  //   } catch (err) {
-  //     alert("Error: " + err.message);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // }
-
   return (
-    <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Key Requests</h1>
-        <button
-          onClick={handleDistributeEqually}
-          disabled={loading}
-          style={{ padding: '10px 20px', cursor: 'pointer', background: '#0070f3', color: 'white', border: 'none', borderRadius: '5px' }}
-        >
-          {loading ? 'Processing...' : 'Distribute Equally & Approve All'}
-        </button>
-      </div>
+    <Container maxWidth="lg" sx={{ py: 6 }}>
+      {/* Header Section */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                color: isDark ? 'white' : '#1e293b',
+                textAlign: 'right',
+                direction: 'rtl'
+              }}
+            >
+              ניהול בקשות מפתחות   
+              <Key size={32} style={{ color: '#10b981' }} />
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid #ccc', textAlign: 'left' }}>
-            <th>Requester</th>
-            <th>Single</th>
-            <th>Two-Team</th>
-            <th>Company</th>
-            <th>Total</th>
-            <th>Range</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {requests.map(req => (
-            <tr key={req.id} style={{ borderBottom: '1px solid #eee' }}>
-              <td>{req.battalion_name}</td>
-              <td>{req.single_team_amount}</td>
-              <td>{req.two_team_amount}</td>
-              <td>{req.company_amount}</td>
-              <td>{req.company_amount + req.two_team_amount + req.single_team_amount}</td>
-              <td>{req.range_start} to {req.range_end}</td>
-              <td>
-                <b style={{ color: req.status === 'pending' ? 'orange' : 'green' }}>
-                  {req.status.toUpperCase()}
-                </b>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            </Typography>
+          </Box>
+          <Typography
+            sx={{
+              color: isDark ? 'rgba(255, 255, 255, 0.6)' : '#64748b',
+              textAlign: 'right',
+              direction: 'rtl'
+            }}
+          >
+            ניהול וחלוקת בקשות למפתחות כיתות
+          </Typography>
+        </Box>
+
+        {/* Wednesday Navigation and Action Row */}
+        <Box sx={{ mb: 4, display: 'flex', gap: 3, alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Wednesday Navigator */}
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            p: 2,
+            borderRadius: '12px',
+            bgcolor: isDark ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
+            border: isDark ? '1px solid rgba(99, 102, 241, 0.2)' : '1px solid rgba(99, 102, 241, 0.1)',
+            minWidth: 400
+          }}>
+            <Box
+              onClick={handlePreviousWednesday}
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                cursor: wednesdayOffset > 0 ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                bgcolor: wednesdayOffset > 0
+                  ? (isDark ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)')
+                  : 'transparent',
+                opacity: wednesdayOffset > 0 ? 1 : 0.3,
+                '&:hover': wednesdayOffset > 0 ? {
+                  bgcolor: isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.15)',
+                } : {}
+              }}
+            >
+              <ArrowRight size={20} style={{ color: '#6366f1' }} />
+            </Box>
+
+            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+              <Calendar size={20} style={{ color: '#6366f1' }} />
+              <Typography
+                sx={{
+                  color: '#6366f1',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  direction: 'rtl'
+                }}
+              >
+                {selectedWednesday && new Date(selectedWednesday).toLocaleDateString('he-IL', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  weekday: 'long'
+                })}
+              </Typography>
+            </Box>
+
+            <Box
+              onClick={handleNextWednesday}
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                bgcolor: isDark ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)',
+                '&:hover': {
+                  bgcolor: isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.15)',
+                }
+              }}
+            >
+              <ArrowLeft size={20} style={{ color: '#6366f1' }} />
+            </Box>
+          </Box>
+
+          <Button
+            onClick={handleDistributeEqually}
+            disabled={loading}
+            variant="contained"
+            startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <CheckCircle size={20} />}
+            sx={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white',
+              px: 4,
+              py: 1.5,
+              borderRadius: '12px',
+              fontWeight: 600,
+              textTransform: 'none',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                boxShadow: '0 6px 16px rgba(16, 185, 129, 0.4)',
+              },
+              '&:disabled': {
+                background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+              }
+            }}
+          >
+            {loading ? 'מעבד...' : 'חלק באופן שווה ואשר הכל'}
+          </Button>
+        </Box>
+      </motion.div>
+
+      {/* Table Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card
+          sx={{
+            background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'white',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '24px',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+            boxShadow: isDark ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden'
+          }}
+        >
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow
+                  sx={{
+                    bgcolor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                  }}
+                >
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0'
+                  }}>
+                    מבקש
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '80px'
+                  }}>
+                    יחיד
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '100px'
+                  }}>
+                    שני צוותים
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '80px'
+                  }}>
+                    פלוגה
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '80px'
+                  }}>
+                    סה"כ
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0'
+                  }}>
+                    תאריך יעד
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '100px'
+                  }}>
+                    כיתות חסרות
+                  </TableCell>
+                  <TableCell sx={{
+                    color: isDark ? 'rgba(255, 255, 255, 0.7)' : '#64748b',
+                    fontWeight: 600,
+                    textAlign: 'right',
+                    direction: 'rtl',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    width: '120px'
+                  }}>
+                    סטטוס
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {requests
+                  .filter(req => req.range_start === selectedWednesday)
+                  .map((req) => (
+                    <TableRow
+                      key={req.id}
+                      sx={{
+                        '&:hover': {
+                          bgcolor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                        }
+                      }}
+                    >
+                      <TableCell sx={{
+                        color: isDark ? 'white' : '#1e293b',
+                        textAlign: 'right',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.battalion_name}
+                      </TableCell>
+                      <TableCell sx={{
+                        color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569',
+                        textAlign: 'center',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.single_team_amount}
+                      </TableCell>
+                      <TableCell sx={{
+                        color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569',
+                        textAlign: 'center',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.two_team_amount}
+                      </TableCell>
+                      <TableCell sx={{
+                        color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569',
+                        textAlign: 'center',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.company_amount}
+                      </TableCell>
+                      <TableCell sx={{
+                        color: isDark ? 'white' : '#1e293b',
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.company_amount + req.two_team_amount + req.single_team_amount}
+                      </TableCell>
+                      <TableCell sx={{
+                        color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569',
+                        textAlign: 'right',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {new Date(req.range_start).toLocaleDateString('he-IL', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </TableCell>
+                      <TableCell sx={{
+                        textAlign: 'center',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        {req.missing_rooms > 0 ? (
+                          <Chip
+                            label={req.missing_rooms}
+                            size="small"
+                            sx={{
+                              bgcolor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              fontWeight: 600,
+                              borderRadius: '8px',
+                            }}
+                          />
+                        ) : (
+                          <Typography sx={{
+                            color: isDark ? 'rgba(255, 255, 255, 0.4)' : '#94a3b8',
+                            fontSize: '0.875rem'
+                          }}>
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{
+                        textAlign: 'right',
+                        direction: 'rtl',
+                        borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid #e2e8f0'
+                      }}>
+                        <Chip
+                          icon={req.status === 'pending' ? <Clock size={16} /> : <CheckCircle size={16} />}
+                          label={req.status === 'pending' ? 'ממתין' : 'אושר'}
+                          sx={{
+                            bgcolor: req.status === 'pending'
+                              ? isDark ? 'rgba(251, 146, 60, 0.15)' : 'rgba(251, 146, 60, 0.1)'
+                              : isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+                            color: req.status === 'pending' ? '#fb923c' : '#10b981',
+                            fontWeight: 600,
+                            borderRadius: '8px',
+                            '& .MuiChip-icon': {
+                              color: req.status === 'pending' ? '#fb923c' : '#10b981',
+                            }
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {requests.length === 0 && !loading && (
+            <Box sx={{ p: 8, textAlign: 'center' }}>
+              <Key size={48} style={{
+                color: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+                marginBottom: '16px'
+              }} />
+              <Typography
+                sx={{
+                  color: isDark ? 'rgba(255, 255, 255, 0.5)' : '#64748b',
+                  fontSize: '1.125rem',
+                  textAlign: 'center',
+                  direction: 'rtl'
+                }}
+              >
+                אין בקשות זמינות
+              </Typography>
+            </Box>
+          )}
+        </Card>
+      </motion.div>
+    </Container>
   );
 }
