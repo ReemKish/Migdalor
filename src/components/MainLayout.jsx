@@ -139,7 +139,6 @@ export default function MainLayout() {
     const adminFeatures = [
         { title: 'ניהול בקשות', icon: UserCheck, path: '/admin', color: '#6366f1' },
         { title: 'ניהול משתמשים', icon: Settings, path: '/manage-users', color: '#8b5cf6' },
-        { title: 'ייצוא נתונים', icon: Database, path: '/data-export', color: '#ec4899' }
     ];
 
     return (

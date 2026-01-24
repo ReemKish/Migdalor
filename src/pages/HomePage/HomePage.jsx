@@ -11,27 +11,83 @@ import DailySchedule from 'components/DailySchedule/DailySchedule';
 export default function Home() {
     // שליפת המידע המשותף שהגיע מ-MainLayout
     const { user, isDark, authUserGroupIds } = useOutletContext();
-    const [dailyClasses, setDailyClasses] = useState([]); 
+    const [dailyClasses, setDailyClasses] = useState([]);
 
     // שליפת השיעורים היומיים (לוגיקה ספציפית לעמוד זה)
     useEffect(() => {
         if (!authUserGroupIds) return;
 
+        const today = new Date().toLocaleDateString('en-CA');
+
         const fetchDailyClasses = async () => {
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const { data, error } = await supabase
+                .from('schedule_lessons')
+                .select(`
+    *,
+    room_type:needed_room_type_id ( id, name )
+  `)
+                .eq('date', today)
+                .order('start_time', { ascending: true });
+
+            if (!error && data) setDailyClasses(data);
+            else setDailyClasses([]);
+        };
+
+        fetchDailyClasses();
+
+        const channel = supabase
+            .channel('daily-schedule')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'schedule_lessons',
+                    filter: `date=eq.${today}`
+                },
+                () => {
+                    // כל שינוי היום -> טוען מחדש
+                    fetchDailyClasses();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [authUserGroupIds]);
+    useEffect(() => {
+        if (!authUserGroupIds) return;
+
+        const today = new Date().toLocaleDateString('en-CA');
+
+        const fetchDailyClasses = async () => {
             const { data, error } = await supabase
                 .from('schedule_lessons')
                 .select('*')
                 .eq('date', today)
-                .in('group_id', authUserGroupIds)
                 .order('start_time', { ascending: true });
 
-            if (!error) setDailyClasses(data);
-            else console.error('Error fetching daily classes:', error);
+            if (!error && data) setDailyClasses(data);
+            else setDailyClasses([]);
         };
 
         fetchDailyClasses();
+
+        const channel = supabase
+            .channel('daily-schedule')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'schedule_lessons', filter: `date=eq.${today}` },
+                () => fetchDailyClasses()
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [authUserGroupIds]);
+
 
     // אם עדיין אין משתמש (למרות שה-Layout אמור לטפל בזה), לא נציג כלום או טעינה פשוטה
     if (!user) return null;
