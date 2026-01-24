@@ -24,24 +24,30 @@ import {
     IconButton,
     Grid,
     Container,
-    Paper,
     TableContainer,
     CircularProgress,
-    Tooltip
+    Fade,
+    Divider
 } from '@mui/material';
+import { motion } from 'framer-motion';
 import {
-    Add as PlusIcon,
-    VpnKey as KeyIcon,
-    Delete as Trash2Icon,
-    Edit as Edit2Icon,
-    Computer as MonitorIcon,
-    Save as SaveIcon,
-    Cancel as CancelIcon,
-    CleaningServices as BroomIcon,
-    Send as SendIcon
-} from '@mui/icons-material';
-import { supabase } from '../../lib/supabaseClient'; // Ensure path is correct
-import { BAHAD_GROUP_KEY_ID } from 'lib/consts'
+    Plus,
+    Key,
+    Trash2,
+    Edit2,
+    Monitor,
+    Save,
+    X,
+    BrushCleaning, // במקום CleaningServices
+    Send,
+    Search,
+    Building,
+    CheckCircle,
+    User
+} from 'lucide-react';
+import { useOutletContext } from 'react-router';
+import { supabase } from '../../lib/supabaseClient';
+import { BAHAD_GROUP_KEY_ID } from 'lib/consts';
 
 // --- Utility Functions ---
 
@@ -67,8 +73,10 @@ function formatLessonData(data) {
 }
 
 const KeysManager = () => {
+    // קבלת נתונים מה-Layout
+    const { user, isDark } = useOutletContext();
+
     // --- State Management ---
-    const [user, setUser] = useState(null);
     const [keys, setKeys] = useState([]);
     const [buildings, setBuildings] = useState([]);
     const [groups, setGroups] = useState([]);
@@ -102,21 +110,14 @@ const KeysManager = () => {
         company_amount: 0
     });
 
-    const isAdmin = user?.site_role === 'admin' || true;
+    const isAdmin = user?.roles?.includes('admin') || user?.roles?.includes('Admin') || true; // לוגיקה זמנית ל-Admin
 
     // --- Data Fetching ---
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser) {
-                const { data: userData } = await supabase.from('users')
-                    .select('id, full_name, group_node(id, name)')
-                    .eq('id', authUser.id).single();
-                console.log("user data:", userData);
-                setUser(userData);
-            }
+            // הוסר ה-fetch של המשתמש כי הוא מגיע מה-Context
 
             const [keysReq, buildingsReq, groupsReq, todayLessonsReq, wedLessonsReq] = await Promise.all([
                 supabase.from('keysmanager_keys').select('*, group_node(id, name)').order('room_number', { ascending: true }),
@@ -224,7 +225,7 @@ const KeysManager = () => {
         try {
             setIsLoading(true);
             const payload = {
-                requester: user?.group_node.id,
+                requester: user?.group_node?.id || user?.group_id, // התאמה למבנה שלך
                 requestee: BAHAD_GROUP_KEY_ID,
                 range_start: requestFormData.range_start,
                 range_end: requestFormData.range_end,
@@ -280,171 +281,404 @@ const KeysManager = () => {
     const smallCount = keys.filter((k) => k.room_type === 'צוותי').length;
     const largeCount = keys.filter((k) => k.room_type === 'פלוגתי').length;
 
+    if (!user) return null;
+
     return (
-        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #f8fafc, #ffffff, #f1f5f9)' }} dir="rtl">
-            <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Container maxWidth="lg" sx={{ py: 6 }}>
+            {/* Header Section */}
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
                 <Box sx={{ mb: 4 }}>
-                    <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>ניהול מפתחות 🗝️</Typography>
-                    <Typography variant="body1" sx={{ color: '#64748b' }}>הוסף, ערוך או בקש הקצאת מפתחות כיתות</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: isDark ? 'white' : '#1e293b' }}>
+                            ניהול מפתחות
+                        </Typography>
+                        <Key size={32} style={{ color: '#10b981' }} />
+                    </Box>
+                    <Typography sx={{ color: isDark ? 'rgba(255, 255, 255, 0.6)' : '#64748b' }}>
+                        הוסף, ערוך או בקש הקצאת מפתחות כיתות
+                    </Typography>
                 </Box>
+            </motion.div>
 
-                <Grid container spacing={2} sx={{ mb: 4 }}>
-                    <Grid item xs={12} sm={4}>
-                        <Card sx={{ p: 2, border: '1px solid #e2e8f0' }}>
-                            <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>סה״כ מפתחות</Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>{keys.length}</Typography>
-                        </Card>
+            {/* Stats Cards */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+                {[
+                    { title: 'סה״כ מפתחות', value: keys.length, color: '#3b82f6', bg: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff' },
+                    { title: 'חדרים צוותיים', value: smallCount, color: '#10b981', bg: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ecfdf5' },
+                    { title: 'חדרים פלוגתיים', value: largeCount, color: '#8b5cf6', bg: isDark ? 'rgba(139, 92, 246, 0.1)' : '#f5f3ff' },
+                ].map((stat, index) => (
+                    <Grid item xs={12} sm={4} key={index}>
+                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
+                            <Card sx={{
+                                p: 3,
+                                bgcolor: stat.bg,
+                                borderRadius: '20px',
+                                border: `1px solid ${stat.color}30`,
+                                boxShadow: 'none'
+                            }}>
+                                <Typography variant="body2" sx={{ color: stat.color, fontWeight: 600, mb: 0.5 }}>{stat.title}</Typography>
+                                <Typography variant="h4" sx={{ fontWeight: 700, color: isDark ? 'white' : '#1e293b' }}>{stat.value}</Typography>
+                            </Card>
+                        </motion.div>
                     </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <Card sx={{ p: 2, bgcolor: '#eff6ff', borderColor: '#bfdbfe' }}>
-                            <Typography variant="body2" sx={{ color: '#2563eb', mb: 0.5 }}>חדרים צוותיים</Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1d4ed8' }}>{smallCount}</Typography>
-                        </Card>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <Card sx={{ p: 2, bgcolor: '#faf5ff', borderColor: '#e9d5ff' }}>
-                            <Typography variant="body2" sx={{ color: '#9333ea', mb: 0.5 }}>חדרים פלוגתיים</Typography>
-                            <Typography variant="h4" sx={{ fontWeight: 700, color: '#7e22ce' }}>{largeCount}</Typography>
-                        </Card>
-                    </Grid>
-                </Grid>
+                ))}
+            </Grid>
 
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}>
-                    {!isDistributing ? (
-                        <>
-                            <Button variant="contained" startIcon={<SendIcon />} onClick={() => setShowRequestModal(true)} sx={{ bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' } }}>
-                                בקשת מפתחות
-                            </Button>
-                            {isAdmin && (
-                                <>
-                                    <Button variant="contained" startIcon={<PlusIcon />} onClick={() => setShowModal(true)} sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}>
-                                        הוסף מפתח
-                                    </Button>
-                                    <Button variant="outlined" startIcon={<Edit2Icon />} onClick={() => setIsDistributing(true)}>
-                                        חלק מפתחות
-                                    </Button>
-                                </>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSaveDistribution} sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}>שמור חלוקה</Button>
-                            <Button variant="outlined" startIcon={<CancelIcon />} onClick={() => { setIsDistributing(false); fetchData(); }} color="error">בטל</Button>
-                        </>
-                    )}
-                </Box>
+            {/* Actions Bar */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}>
+                {!isDistributing ? (
+                    <>
+                        <Button
+                            variant="contained"
+                            startIcon={<Send size={18} />}
+                            onClick={() => setShowRequestModal(true)}
+                            sx={{
+                                bgcolor: '#3b82f6',
+                                borderRadius: '12px',
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                '&:hover': { bgcolor: '#2563eb' }
+                            }}
+                        >
+                            בקשת מפתחות
+                        </Button>
+                        {isAdmin && (
+                            <>
+                                <Button
+                                    variant="contained"
+                                    startIcon={<Plus size={18} />}
+                                    onClick={() => setShowModal(true)}
+                                    sx={{
+                                        bgcolor: '#10b981',
+                                        borderRadius: '12px',
+                                        textTransform: 'none',
+                                        fontWeight: 600,
+                                        '&:hover': { bgcolor: '#059669' }
+                                    }}
+                                >
+                                    הוסף מפתח
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<Edit2 size={18} />}
+                                    onClick={() => setIsDistributing(true)}
+                                    sx={{
+                                        borderColor: isDark ? 'rgba(255,255,255,0.3)' : '#cbd5e1',
+                                        color: isDark ? 'white' : '#475569',
+                                        borderRadius: '12px',
+                                        textTransform: 'none',
+                                        fontWeight: 600,
+                                        '&:hover': {
+                                            borderColor: isDark ? 'white' : '#94a3b8',
+                                            bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'
+                                        }
+                                    }}
+                                >
+                                    חלק מפתחות
+                                </Button>
+                            </>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <Button variant="contained" startIcon={<Save size={18} />} onClick={handleSaveDistribution} sx={{ bgcolor: '#10b981', borderRadius: '12px', '&:hover': { bgcolor: '#059669' } }}>שמור חלוקה</Button>
+                        <Button variant="outlined" startIcon={<X size={18} />} onClick={() => { setIsDistributing(false); fetchData(); }} color="error" sx={{ borderRadius: '12px' }}>בטל</Button>
+                    </>
+                )}
+            </Box>
 
-                <TableContainer component={Paper} sx={{ border: '1px solid #e2e8f0' }}>
-                    <Table>
-                        <TableHead>
-                            <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>מספר חדר</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>סוג</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>אזור</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>מחשבים</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 600 }}>סטטוס / מחזיק</TableCell>
-                                {isAdmin && <TableCell align="center" sx={{ fontWeight: 600 }}>מסדר כיתות 🧹</TableCell>}
-                                {isAdmin && !isDistributing && <TableCell align="center" sx={{ fontWeight: 600 }}>פעולות</TableCell>}
-                                {isDistributing && <TableCell align="center" sx={{ fontWeight: 600 }}>מוקצא ל</TableCell>}
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {isLoading ? (
-                                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
-                            ) : keys.map((key, index) => (
-                                <TableRow key={key.id} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
-                                    <TableCell align="center">
-                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                                            <KeyIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
-                                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{key.room_number}</Typography>
-                                        </Box>
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        <Chip label={key.room_type === 'פלוגתי' ? '🏢 פלוגתי' : '🏠 צוותי'} size="small" variant="outlined" sx={{ borderColor: key.room_type === 'פלוגתי' ? '#c084fc' : '#60a5fa', color: key.room_type === 'פלוגתי' ? '#7e22ce' : '#1d4ed8' }} />
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        {key.building_id ? <Chip label={`📍 ${buildings.find(b => b.id === key.building_id)?.name || key.building_id}`} size="small" variant="outlined" sx={{ borderColor: '#cbd5e1', color: '#475569' }} /> : '—'}
-                                    </TableCell>
-                                    <TableCell align="center">{key.has_computers ? <MonitorIcon sx={{ fontSize: 16, color: '#2563eb' }} /> : '—'}</TableCell>
-                                    <TableCell align="center">
-                                        {(() => {
-                                            const holder = getCurrentHolder(key.room_number) || getAssignedGroupName(key);
-                                            return holder ? (
-                                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                                    <Chip label="תפוס" size="small" sx={{ bgcolor: '#fef3c7', color: '#92400e' }} />
-                                                    <Typography variant="caption">{holder}</Typography>
-                                                </Box>
-                                            ) : <Chip label="זמין" size="small" sx={{ bgcolor: '#d1fae5', color: '#065f46' }} />;
-                                        })()}
-                                    </TableCell>
-                                    {isAdmin && (
-                                        <TableCell align="center">
-                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                                                {(() => {
-                                                    const res = getMisdarResponsible(key);
-                                                    return res ? <Chip label={`🧹 ${res.crewName}`} size="small" variant="outlined" sx={{ bgcolor: '#fff7ed', color: '#c2410c' }} /> : '—';
-                                                })()}
-                                                <IconButton size="small" onClick={() => { setMisdarEditKey(key); setMisdarValue(key.manual_misdar_assignment || ''); }}><Edit2Icon sx={{ fontSize: 14 }} /></IconButton>
+            {/* Main Table */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <Card sx={{
+                    background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                    backdropFilter: 'blur(20px)',
+                    borderRadius: '24px',
+                    border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
+                    boxShadow: isDark ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    overflow: 'hidden'
+                }}>
+                    <TableContainer>
+                        <Table>
+                            <TableHead>
+                                <TableRow sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,1)' }}>
+                                    {[
+                                        'מספר חדר', 'סוג', 'אזור', 'מחשבים', 'סטטוס / מחזיק',
+                                        ...(isAdmin ? ['מסדר כיתות'] : []),
+                                        ...(isAdmin && !isDistributing ? ['פעולות'] : []),
+                                        ...(isDistributing ? ['מוקצא ל'] : [])
+                                    ].map((header) => (
+                                        <TableCell key={header} align="center" sx={{
+                                            color: isDark ? 'rgba(255,255,255,0.7)' : '#64748b',
+                                            fontWeight: 600,
+                                            borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0'
+                                        }}>
+                                            {header}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {isLoading ? (
+                                    <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, borderBottom: 'none' }}><CircularProgress /></TableCell></TableRow>
+                                ) : keys.map((key, index) => (
+                                    <TableRow key={key.id} sx={{ '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(248,250,252,0.5)' } }}>
+                                        {/* Room Number */}
+                                        <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                                                <Key size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+                                                <Typography variant="body2" sx={{ fontWeight: 600, color: isDark ? 'white' : '#1e293b' }}>{key.room_number}</Typography>
                                             </Box>
                                         </TableCell>
-                                    )}
-                                    {isAdmin && !isDistributing && (
-                                        <TableCell align="center">
-                                            <IconButton size="small" onClick={() => handleOpenEdit(key)}><Edit2Icon fontSize="small" /></IconButton>
-                                            <IconButton size="small" onClick={() => handleDelete(key.id)}><Trash2Icon fontSize="small" sx={{ color: '#f87171' }} /></IconButton>
+
+                                        {/* Type */}
+                                        <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                            <Chip
+                                                label={key.room_type === 'פלוגתי' ? 'פלוגתי' : 'צוותי'}
+                                                size="small"
+                                                sx={{
+                                                    bgcolor: key.room_type === 'פלוגתי'
+                                                        ? isDark ? 'rgba(139, 92, 246, 0.15)' : '#f3e8ff'
+                                                        : isDark ? 'rgba(59, 130, 246, 0.15)' : '#dbeafe',
+                                                    color: key.room_type === 'פלוגתי' ? '#a855f7' : '#2563eb',
+                                                    fontWeight: 600,
+                                                    borderRadius: '8px'
+                                                }}
+                                            />
                                         </TableCell>
-                                    )}
-                                    {isDistributing && (
-                                        <TableCell align="center">
-                                            <Select size="small" value={key.assigned_group_id || BAHAD_GROUP_KEY_ID} onChange={(e) => handleLocalAssign(index, e.target.value)} sx={{ minWidth: 120 }}>
-                                                <MenuItem value={BAHAD_GROUP_KEY_ID}>בה"ד (פנוי)</MenuItem>
-                                                {groups.filter(g => g.group_type.name === "Battalion").map(g => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
-                                            </Select>
+
+                                        {/* Building */}
+                                        <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                            {key.building_id ? (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }}>
+                                                    <Building size={14} />
+                                                    <Typography variant="caption">{buildings.find(b => b.id === key.building_id)?.name || key.building_id}</Typography>
+                                                </Box>
+                                            ) : (
+                                                <Typography variant="caption" sx={{ color: isDark ? 'rgba(255,255,255,0.3)' : '#94a3b8' }}>-</Typography>
+                                            )}
                                         </TableCell>
-                                    )}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-            </Container>
+
+                                        {/* Computers */}
+                                        <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                            {key.has_computers ? <Monitor size={16} color="#3b82f6" /> : <Typography variant="caption" sx={{ color: isDark ? 'rgba(255,255,255,0.3)' : '#94a3b8' }}>-</Typography>}
+                                        </TableCell>
+
+                                        {/* Status */}
+                                        <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                            {(() => {
+                                                const holder = getCurrentHolder(key.room_number) || getAssignedGroupName(key);
+                                                return holder ? (
+                                                    <Chip
+                                                        label={holder}
+                                                        size="small"
+                                                        icon={<User size={12} />}
+                                                        sx={{ bgcolor: isDark ? 'rgba(251, 146, 60, 0.15)' : '#ffedd5', color: '#ea580c', fontWeight: 600, borderRadius: '8px' }}
+                                                    />
+                                                ) : (
+                                                    <Chip
+                                                        label="פנוי"
+                                                        size="small"
+                                                        icon={<CheckCircle size={12} />}
+                                                        sx={{ bgcolor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#d1fae5', color: '#059669', fontWeight: 600, borderRadius: '8px' }}
+                                                    />
+                                                );
+                                            })()}
+                                        </TableCell>
+
+                                        {/* Misdar (Admin) */}
+                                        {isAdmin && (
+                                            <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                                                    {(() => {
+                                                        const res = getMisdarResponsible(key);
+                                                        return res ? (
+                                                            <Chip
+                                                                label={res.crewName}
+                                                                size="small"
+                                                                icon={<BrushCleaning size={12} />}
+                                                                sx={{ bgcolor: isDark ? 'rgba(234, 88, 12, 0.15)' : '#fff7ed', color: '#c2410c', borderRadius: '6px' }}
+                                                            />
+                                                        ) : (
+                                                            <Typography variant="caption" sx={{ color: isDark ? 'rgba(255,255,255,0.3)' : '#94a3b8' }}>-</Typography>
+                                                        );
+                                                    })()}
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => { setMisdarEditKey(key); setMisdarValue(key.manual_misdar_assignment || ''); }}
+                                                        sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : '#94a3b8', '&:hover': { color: '#3b82f6' } }}
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </IconButton>
+                                                </Box>
+                                            </TableCell>
+                                        )}
+
+                                        {/* Actions (Admin) */}
+                                        {isAdmin && !isDistributing && (
+                                            <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+                                                    <IconButton size="small" onClick={() => handleOpenEdit(key)} sx={{ color: '#3b82f6', bgcolor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff' }}>
+                                                        <Edit2 size={14} />
+                                                    </IconButton>
+                                                    <IconButton size="small" onClick={() => handleDelete(key.id)} sx={{ color: '#ef4444', bgcolor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2' }}>
+                                                        <Trash2 size={14} />
+                                                    </IconButton>
+                                                </Box>
+                                            </TableCell>
+                                        )}
+
+                                        {/* Distribute Select */}
+                                        {isDistributing && (
+                                            <TableCell align="center" sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9' }}>
+                                                <Select
+                                                    size="small"
+                                                    value={key.assigned_group_id || BAHAD_GROUP_KEY_ID}
+                                                    onChange={(e) => handleLocalAssign(index, e.target.value)}
+                                                    sx={{
+                                                        minWidth: 120,
+                                                        color: isDark ? 'white' : 'inherit',
+                                                        '.MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : '#e2e8f0' }
+                                                    }}
+                                                >
+                                                    <MenuItem value={BAHAD_GROUP_KEY_ID}>בה"ד (פנוי)</MenuItem>
+                                                    {groups.filter(g => g.group_type.name === "Battalion").map(g => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
+                                                </Select>
+                                            </TableCell>
+                                        )}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </Card>
+            </motion.div>
 
             {/* Request Modal */}
-            <Dialog open={showRequestModal} onClose={() => setShowRequestModal(false)} maxWidth="sm" fullWidth dir="rtl">
-                <DialogTitle>בקשת הקצאת מפתחות</DialogTitle>
-                <DialogContent dividers>
-                    <Grid container spacing={2} sx={{ pt: 1 }}>
-                        <Grid item xs={6}><TextField label="מתאריך" type="date" fullWidth InputLabelProps={{ shrink: true }} value={requestFormData.range_start} onChange={(e) => setRequestFormData({ ...requestFormData, range_start: e.target.value })} /></Grid>
-                        <Grid item xs={6}><TextField label="עד תאריך" type="date" fullWidth InputLabelProps={{ shrink: true }} value={requestFormData.range_end} onChange={(e) => setRequestFormData({ ...requestFormData, range_end: e.target.value })} /></Grid>
-                        <Grid item xs={4}><TextField label="צוותי" type="number" fullWidth value={requestFormData.single_team_amount} onChange={(e) => setRequestFormData({ ...requestFormData, single_team_amount: e.target.value })} /></Grid>
-                        <Grid item xs={4}><TextField label="דו-צוותי" type="number" fullWidth value={requestFormData.two_team_amount} onChange={(e) => setRequestFormData({ ...requestFormData, two_team_amount: e.target.value })} /></Grid>
-                        <Grid item xs={4}><TextField label="פלוגתי" type="number" fullWidth value={requestFormData.company_amount} onChange={(e) => setRequestFormData({ ...requestFormData, company_amount: e.target.value })} /></Grid>
+            <Dialog open={showRequestModal} onClose={() => setShowRequestModal(false)} maxWidth="sm" fullWidth dir="rtl" PaperProps={{ sx: { borderRadius: '20px', bgcolor: isDark ? '#1e293b' : 'white', color: isDark ? 'white' : 'inherit' } }}>
+                <DialogTitle sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>בקשת הקצאת מפתחות</DialogTitle>
+                <DialogContent sx={{ py: 3 }}>
+                    <Grid container spacing={3}>
+                        <Grid item xs={6}>
+                            <TextField
+                                label="מתאריך"
+                                type="date"
+                                fullWidth
+                                InputLabelProps={{ shrink: true, style: { color: isDark ? '#94a3b8' : 'inherit' } }}
+                                value={requestFormData.range_start}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, range_start: e.target.value })}
+                                sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                            />
+                        </Grid>
+                        <Grid item xs={6}>
+                            <TextField
+                                label="עד תאריך"
+                                type="date"
+                                fullWidth
+                                InputLabelProps={{ shrink: true, style: { color: isDark ? '#94a3b8' : 'inherit' } }}
+                                value={requestFormData.range_end}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, range_end: e.target.value })}
+                                sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <TextField
+                                label="צוותי"
+                                type="number"
+                                fullWidth
+                                value={requestFormData.single_team_amount}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, single_team_amount: e.target.value })}
+                                sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <TextField
+                                label="דו-צוותי"
+                                type="number"
+                                fullWidth
+                                value={requestFormData.two_team_amount}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, two_team_amount: e.target.value })}
+                                sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                            />
+                        </Grid>
+                        <Grid item xs={4}>
+                            <TextField
+                                label="פלוגתי"
+                                type="number"
+                                fullWidth
+                                value={requestFormData.company_amount}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, company_amount: e.target.value })}
+                                sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                            />
+                        </Grid>
                     </Grid>
                 </DialogContent>
-                <DialogActions><Button onClick={() => setShowRequestModal(false)}>ביטול</Button><Button onClick={handleSubmitRequest} variant="contained">שלח בקשה</Button></DialogActions>
+                <DialogActions sx={{ p: 2, borderTop: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>
+                    <Button onClick={() => setShowRequestModal(false)} sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>ביטול</Button>
+                    <Button onClick={handleSubmitRequest} variant="contained" sx={{ bgcolor: '#3b82f6', borderRadius: '8px' }}>שלח בקשה</Button>
+                </DialogActions>
             </Dialog>
 
-            {/* Edit Key Modal */}
-            <Dialog open={showModal} onClose={handleCloseModal} maxWidth="sm" fullWidth dir="rtl">
-                <DialogTitle>{editingKey ? 'ערוך מפתח' : 'הוסף מפתח'}</DialogTitle>
-                <DialogContent dividers>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-                        <TextField label="מספר חדר" fullWidth value={formData.room_number} onChange={(e) => setFormData({ ...formData, room_number: e.target.value })} />
-                        <FormControl fullWidth><InputLabel>סוג חדר</InputLabel><Select value={formData.room_type} label="סוג חדר" onChange={(e) => setFormData({ ...formData, room_type: e.target.value })}><MenuItem value="צוותי">צוותי</MenuItem><MenuItem value="פלוגתי">פלוגתי</MenuItem></Select></FormControl>
-                        <FormControl fullWidth><InputLabel>בניין</InputLabel><Select value={formData.building_id} label="בניין" onChange={(e) => setFormData({ ...formData, building_id: e.target.value })}><MenuItem value="">ללא בניין</MenuItem>{buildings.map(b => <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>)}</Select></FormControl>
-                        <FormControlLabel control={<Checkbox checked={formData.has_computers} onChange={(e) => setFormData({ ...formData, has_computers: e.target.checked })} />} label="מחשבים בחדר" />
+            {/* Edit/Add Key Modal */}
+            <Dialog open={showModal} onClose={handleCloseModal} maxWidth="sm" fullWidth dir="rtl" PaperProps={{ sx: { borderRadius: '20px', bgcolor: isDark ? '#1e293b' : 'white', color: isDark ? 'white' : 'inherit' } }}>
+                <DialogTitle sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>{editingKey ? 'ערוך מפתח' : 'הוסף מפתח'}</DialogTitle>
+                <DialogContent sx={{ py: 3 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+                        <TextField
+                            label="מספר חדר"
+                            fullWidth
+                            value={formData.room_number}
+                            onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
+                            sx={{ '& input': { color: isDark ? 'white' : 'inherit' } }}
+                        />
+                        <FormControl fullWidth>
+                            <InputLabel sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>סוג חדר</InputLabel>
+                            <Select
+                                value={formData.room_type}
+                                label="סוג חדר"
+                                onChange={(e) => setFormData({ ...formData, room_type: e.target.value })}
+                                sx={{ color: isDark ? 'white' : 'inherit', '.MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'inherit' } }}
+                            >
+                                <MenuItem value="צוותי">צוותי</MenuItem>
+                                <MenuItem value="פלוגתי">פלוגתי</MenuItem>
+                            </Select>
+                        </FormControl>
+                        <FormControl fullWidth>
+                            <InputLabel sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>בניין</InputLabel>
+                            <Select
+                                value={formData.building_id}
+                                label="בניין"
+                                onChange={(e) => setFormData({ ...formData, building_id: e.target.value })}
+                                sx={{ color: isDark ? 'white' : 'inherit', '.MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'inherit' } }}
+                            >
+                                <MenuItem value="">ללא בניין</MenuItem>
+                                {buildings.map(b => <MenuItem key={b.id} value={b.id}>{b.name}</MenuItem>)}
+                            </Select>
+                        </FormControl>
+                        <FormControlLabel
+                            control={<Checkbox checked={formData.has_computers} onChange={(e) => setFormData({ ...formData, has_computers: e.target.checked })} sx={{ color: isDark ? '#94a3b8' : 'inherit' }} />}
+                            label="מחשבים בחדר"
+                            sx={{ color: isDark ? 'white' : 'inherit' }}
+                        />
                     </Box>
                 </DialogContent>
-                <DialogActions><Button onClick={handleCloseModal}>ביטול</Button><Button onClick={handleSubmitKey} variant="contained">{editingKey ? 'עדכן' : 'צור'}</Button></DialogActions>
+                <DialogActions sx={{ p: 2, borderTop: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>
+                    <Button onClick={handleCloseModal} sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>ביטול</Button>
+                    <Button onClick={handleSubmitKey} variant="contained" sx={{ bgcolor: '#10b981', borderRadius: '8px' }}>{editingKey ? 'עדכן' : 'צור'}</Button>
+                </DialogActions>
             </Dialog>
 
-            {/* Misdar Manual Modal */}
-            <Dialog open={!!misdarEditKey} onClose={() => setMisdarEditKey(null)} maxWidth="sm" fullWidth dir="rtl">
-                <DialogTitle>ערוך מסדר כיתות</DialogTitle>
-                <DialogContent dividers>
+            {/* Misdar Modal */}
+            <Dialog open={!!misdarEditKey} onClose={() => setMisdarEditKey(null)} maxWidth="sm" fullWidth dir="rtl" PaperProps={{ sx: { borderRadius: '20px', bgcolor: isDark ? '#1e293b' : 'white', color: isDark ? 'white' : 'inherit' } }}>
+                <DialogTitle sx={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>ערוך מסדר כיתות</DialogTitle>
+                <DialogContent sx={{ py: 3 }}>
                     <FormControl fullWidth sx={{ mt: 1 }}>
-                        <InputLabel>פלוגה אחראית</InputLabel>
-                        <Select value={misdarValue} onChange={(e) => setMisdarValue(e.target.value)} label="פלוגה אחראית">
+                        <InputLabel sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>פלוגה אחראית</InputLabel>
+                        <Select
+                            value={misdarValue}
+                            onChange={(e) => setMisdarValue(e.target.value)}
+                            label="פלוגה אחראית"
+                            sx={{ color: isDark ? 'white' : 'inherit', '.MuiOutlinedInput-notchedOutline': { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'inherit' } }}
+                        >
                             <MenuItem value="">חישוב אוטומטי</MenuItem>
                             <MenuItem value="פלוגה א - סהר">פלוגה א - סהר</MenuItem>
                             <MenuItem value="פלוגה ב - יפתח">פלוגה ב - יפתח</MenuItem>
@@ -454,9 +688,12 @@ const KeysManager = () => {
                         </Select>
                     </FormControl>
                 </DialogContent>
-                <DialogActions><Button onClick={() => setMisdarEditKey(null)}>ביטול</Button><Button onClick={handleMisdarSave} variant="contained" sx={{ bgcolor: '#ea580c' }}>שמור</Button></DialogActions>
+                <DialogActions sx={{ p: 2, borderTop: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0' }}>
+                    <Button onClick={() => setMisdarEditKey(null)} sx={{ color: isDark ? '#94a3b8' : 'inherit' }}>ביטול</Button>
+                    <Button onClick={handleMisdarSave} variant="contained" sx={{ bgcolor: '#ea580c', borderRadius: '8px' }}>שמור</Button>
+                </DialogActions>
             </Dialog>
-        </Box>
+        </Container>
     );
 };
 
