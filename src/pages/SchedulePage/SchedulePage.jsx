@@ -553,7 +553,7 @@ const Schedule = () => {
                                     <TableRow key={lesson.id} hover>
                                         <TableCell align="center">{groupNames[lesson.team_id] || lesson.team_id}</TableCell>
                                         <TableCell align="center">
-                                            {lesson.start_time?.slice(0, 5)} - {lesson.end_time?.slice(0, 5)}
+                                             {lesson.end_time?.slice(0, 5)} - {lesson.start_time?.slice(0, 5)} 
                                         </TableCell>
                                         <TableCell align="center">
                                             {lesson.needed_room_type_id === 1 ? '🏠 צוותי' : '🏢 פלוגתי'}

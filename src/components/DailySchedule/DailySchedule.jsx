@@ -188,7 +188,7 @@ const statusStyles = {
 
 
 
-export default function DailySchedule({ classes }) {
+export default function DailySchedule({ classes, teamNameById }) {
     if (!classes || classes.length === 0) {
         return (
             <Typography color="text.secondary" sx={{ mt: 2 }}>
@@ -198,10 +198,19 @@ export default function DailySchedule({ classes }) {
     }
 
     return (
-        <TableContainer component={Paper} sx={{ mt: 2 }}>
-            <Table>
+        <TableContainer
+            component={Paper}
+            sx={{
+                width: '100%',
+                borderRadius: '16px',
+                overflow: 'hidden',
+            }}
+        >            <Table sx={{ width: '100%' }}>
+
                 <TableHead>
                     <TableRow sx={{ bgcolor: "#f3f4f6" }}>
+                        <TableCell align="center">עבור</TableCell>
+
                         <TableCell align="center">שעה</TableCell>
                         <TableCell align="center">סוג חדר</TableCell>
                         <TableCell align="center">מחשבים</TableCell>
@@ -214,8 +223,15 @@ export default function DailySchedule({ classes }) {
                     {classes.map((lesson) => (
                         <TableRow key={lesson.id} hover>
                             <TableCell align="center">
-                                {lesson.start_time} - {lesson.end_time}
+                                <Typography sx={{ direction: 'rtl' }}>
+                                    {teamNameById?.[String(lesson.team_id)] || '-'}
+                                </Typography>
                             </TableCell>
+
+                            <TableCell align="center">
+                                {lesson.start_time?.slice(0, 5)} - {lesson.end_time?.slice(0, 5)}
+                            </TableCell>
+
 
                             <TableCell align="center">
                                 <RoomTypeBadge roomType={lesson.room_type?.name || '-'} />
