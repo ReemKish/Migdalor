@@ -132,6 +132,31 @@ const KeysAllocator = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Helper function to check if a group belongs to the user's גדוד
+  const isGroupInUserGdud = async (groupId) => {
+    if (!userGdudId || !groupId) return false;
+
+    let currentId = groupId;
+
+    // Traverse up the hierarchy to check if we reach the user's גדוד
+    while (currentId) {
+      if (currentId === userGdudId) {
+        return true;
+      }
+
+      const { data, error } = await supabase
+        .from("group_node")
+        .select("parent_id")
+        .eq("id", currentId)
+        .single();
+
+      if (error || !data) break;
+      currentId = data.parent_id;
+    }
+
+    return false;
+  };
+
   // Helper function to check if a lesson's group belongs to the user's גדוד
   const isLessonInUserGdud = async (groupId) => {
     if (!userGdudId || !groupId) return false;
@@ -171,13 +196,28 @@ const KeysAllocator = () => {
         const { data: keysData, error: keysError } = await supabase
           .from("keysmanager_keys")
           .select(
-            `id, room_number, room_type_id, has_computers, building_id, room_type(name), building:building_id(name)`,
+            `id, room_number, room_type_id, has_computers, building_id, assigned_group_id, room_type(name), building:building_id(name)`,
           )
           .eq("status", "available");
 
         if (keysError) throw keysError;
         console.log("Fetched keys data:", keysData);
-        const formattedKeys = keysData.map((key) => ({
+
+        // Filter keys to only show those assigned to the user's גדוד
+        let filteredKeysData = keysData || [];
+        if (userGdudId) {
+          filteredKeysData = [];
+          for (const key of keysData || []) {
+            if (key.assigned_group_id) {
+              const isInGdud = await isGroupInUserGdud(key.assigned_group_id);
+              if (isInGdud) {
+                filteredKeysData.push(key);
+              }
+            }
+          }
+        }
+
+        const formattedKeys = filteredKeysData.map((key) => ({
           id: key.id,
           room_number: key.room_number,
           room_type: key.room_type?.name || "unknown",
