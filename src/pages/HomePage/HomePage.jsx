@@ -11,33 +11,94 @@ import DailySchedule from 'components/DailySchedule/DailySchedule';
 export default function Home() {
     // שליפת המידע המשותף שהגיע מ-MainLayout
     const { user, isDark, authUserGroupIds } = useOutletContext();
-    const [dailyClasses, setDailyClasses] = useState([]); 
+    const [dailyClasses, setDailyClasses] = useState([]);
+    const [teamNameById, setTeamNameById] = useState({});
 
-    // שליפת השיעורים היומיים (לוגיקה ספציפית לעמוד זה)
+    const fetchTeamsMap = async () => {
+        const { data, error } = await supabase
+            .from('group_node')
+            .select('id,name')
+            .eq('group_type_id', 4);
+
+        if (error) {
+            console.error('Error fetching teams map:', error);
+            return;
+        }
+
+        const map = {};
+        (data || []).forEach(t => { map[String(t.id)] = t.name; });
+        setTeamNameById(map);
+    };
+
+    // Load team names mapping
     useEffect(() => {
-        if (!authUserGroupIds) return;
+        fetchTeamsMap();
+    }, []);
+    useEffect(() => {
+        if (!user?.group_id) return;
 
-        const fetchDailyClasses = async () => {
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            const { data, error } = await supabase
-                .from('schedule_lessons')
-                .select('*')
-                .eq('date', today)
-                .in('group_id', authUserGroupIds)
-                .order('start_time', { ascending: true });
+        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD מקומי
 
-            if (!error) setDailyClasses(data);
-            else console.error('Error fetching daily classes:', error);
+        const fetchDailyClassesForMyCompany = async () => {
+            try {
+                // 1) הצוות שלי -> להביא parent_id (פלוגה)
+                const { data: myTeam, error: teamErr } = await supabase
+                    .from('group_node')
+                    .select('id, parent_id')
+                    .eq('id', user.group_id)
+                    .single();
+
+                if (teamErr) throw teamErr;
+
+                const companyId = myTeam?.parent_id ? String(myTeam.parent_id) : null;
+                if (!companyId) {
+                    setDailyClasses([]);
+                    return;
+                }
+
+                // 2) להביא את כל הצוותים של הפלוגה
+                const { data: companyTeams, error: teamsErr } = await supabase
+                    .from('group_node')
+                    .select('id')
+                    .eq('group_type_id', 4)       // צוות
+                    .eq('parent_id', companyId);  // שייכים לפלוגה
+
+                if (teamsErr) throw teamsErr;
+
+                const teamIds = (companyTeams || []).map(t => String(t.id));
+                if (teamIds.length === 0) {
+                    setDailyClasses([]);
+                    return;
+                }
+
+                // 3) להביא שיעורים רק לצוותים האלה
+                const { data, error } = await supabase
+                    .from('schedule_lessons')
+                    .select(`
+          *,
+          room_type:needed_room_type_id ( id, name )
+        `)
+                    .eq('date', today)
+                    .in('team_id', teamIds)
+                    .order('start_time', { ascending: true });
+
+                if (error) throw error;
+
+                setDailyClasses(data || []);
+            } catch (e) {
+                console.error('Error fetching daily classes for company:', e);
+                setDailyClasses([]);
+            }
         };
 
-        fetchDailyClasses();
-    }, [authUserGroupIds]);
+        fetchDailyClassesForMyCompany();
+    }, [user?.group_id]);
 
     // אם עדיין אין משתמש (למרות שה-Layout אמור לטפל בזה), לא נציג כלום או טעינה פשוטה
     if (!user) return null;
 
     return (
-        <Container maxWidth="lg" sx={{ py: 6 }}>
+        <Container maxWidth={false} sx={{ px: 4, py: 6 }}>
             {/* Hero Section - הודעת שלום */}
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
@@ -138,6 +199,8 @@ export default function Home() {
                                     borderRadius: '24px',
                                     border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
                                     boxShadow: isDark ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                    width: '100%',
+
                                 }}
                             >
                                 <Typography
@@ -152,7 +215,7 @@ export default function Home() {
                                 >
                                     📅 לו"ז יומי
                                 </Typography>
-                                <DailySchedule classes={dailyClasses} />
+                                <DailySchedule classes={dailyClasses} teamNameById={teamNameById} />
                             </Card>
                         </motion.div>
                     </Grid>

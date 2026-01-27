@@ -128,7 +128,7 @@ export default () => {
                     <Route path="/Home" element={authenticatedRoute(session, loading, <HomePage />)} />
                     <Route path="/onboarding" element={authenticatedRoute(session, loading, <OnboardingPage />)} />
                     <Route path="/waiting-approval" element={authenticatedRoute(session, loading, <WaitingApprovalPage />)} />
-                    <Route path="/manage-requests" element={authenticatedRoute(session, loading, <ManageRequestsPage />)} />
+                    {/* <Route path="/manage-requests" element={authenticatedRoute(session, loading, <ManageRequestsPage />)} /> */}
                     <Route path="/ManageKeys" element={authenticatedRoute(session, loading, <KeysManagerPage />)} />
                     <Route path="/Schedule" element={authenticatedRoute(session, loading, <SchedulePage />)} />
                     <Route path="/Logout" element={<LogoutPage />} />

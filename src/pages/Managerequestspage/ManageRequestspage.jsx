@@ -38,25 +38,28 @@ export default function ManageRequestsPage() {
 
     const checkAdminAndFetchRequests = async () => {
         const { data: { user } } = await supabase.auth.getUser();
+
         if (!user) {
             navigate('/login');
             return;
         }
 
-        // בדיקה אם המשתמש הוא אדמין
+        // קבלת פרטי המשתמש מטבלת users
         const { data: userRoles } = await supabase
             .from('user_roles')
-            .select(`
-                role_id,
-                roles(name, scope, type)
-            `)
+            .select('role_id, roles(name)')
             .eq('user_id', user.id);
 
-        const isAdmin = userRoles?.some(ur => 
-            ur.roles.name === 'admin' || ur.roles.type === 'commanding'
-        );
+        console.log('User roles data:', userRoles);
+
+        // בדיקה אם המשתמש הוא אדמין - התאם לפי המבנה שלך
+        const isAdmin = userRoles?.some(ur => ur.roles?.name === 'admin');
+
+
+        console.log('Is admin:', isAdmin);
 
         if (!isAdmin) {
+            console.log('User is not admin, redirecting...');
             navigate('/home');
             return;
         }
@@ -65,31 +68,27 @@ export default function ManageRequestsPage() {
     };
 
     const fetchRequests = async () => {
-        const { data, error } = await supabase
-            .from('join_requests')
-            .select(`
-                *,
-                requested_group:group_node!join_requests_group_id_fkey(
-                    id,
-                    name,
-                    parent:group_node!group_node_parent_id_fkey(
-                        id,
-                        name
-                    )
-                ),
-                requested_role_info:roles!join_requests_role_id_fkey(
-                    id,
-                    name,
-                    scope,
-                    type
-                )
-            `)
-            .order('created_at', { ascending: false });
+        try {
+            const { data, error } = await supabase
+                .from('join_requests')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            setRequests(data);
+            if (error) {
+                console.error('Error fetching requests:', error);
+                alert('שגיאה בטעינת בקשות: ' + error.message);
+                return;
+            }
+
+            if (data) {
+                setRequests(data);
+            }
+        } catch (error) {
+            console.error('Unexpected error:', error);
+            alert('שגיאה לא צפויה: ' + error.message);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleApprove = async (request) => {
@@ -115,9 +114,9 @@ export default function ManageRequestsPage() {
             // עדכון סטטוס הבקשה
             await supabase
                 .from('join_requests')
-                .update({ 
-                    status: 'approved', 
-                    updated_at: new Date().toISOString() 
+                .update({
+                    status: 'approved',
+                    updated_at: new Date().toISOString()
                 })
                 .eq('id', request.id);
 
@@ -134,8 +133,8 @@ export default function ManageRequestsPage() {
         try {
             await supabase
                 .from('join_requests')
-                .update({ 
-                    status: 'rejected', 
+                .update({
+                    status: 'rejected',
                     rejection_reason: rejectionReason,
                     updated_at: new Date().toISOString()
                 })
@@ -192,8 +191,10 @@ export default function ManageRequestsPage() {
 
     if (loading) {
         return (
-            <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%)' }}>
+            <Box sx={{
+                minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%)'
+            }}>
                 <Typography sx={{ color: 'white' }}>טוען...</Typography>
             </Box>
         );
@@ -224,15 +225,15 @@ export default function ManageRequestsPage() {
             >
                 {isDark ? (
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
-                        <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/>
-                        <line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                     </svg>
                 ) : (
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
                 )}
             </Box>
@@ -259,7 +260,7 @@ export default function ManageRequestsPage() {
                     <Typography variant="h5" sx={{ fontWeight: 700, color: isDark ? 'white' : '#1e293b', mb: 3 }}>
                         בקשות ממתינות ({pendingRequests.length})
                     </Typography>
-                    
+
                     {pendingRequests.length === 0 ? (
                         <Card sx={{
                             p: 4, textAlign: 'center',
@@ -286,11 +287,13 @@ export default function ManageRequestsPage() {
                                             </Typography>
                                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                                 {getStatusChip(request.status)}
-                                                <Chip 
-                                                    label={getRoleTypeLabel(request.requested_role_info?.type)}
-                                                    size="small"
-                                                    sx={{ bgcolor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#f3e8ff', color: '#8b5cf6' }}
-                                                />
+                                                {request.role_id && (
+                                                    <Chip
+                                                        label={`תפקיד ID: ${request.role_id}`}
+                                                        size="small"
+                                                        sx={{ bgcolor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#f3e8ff', color: '#8b5cf6' }}
+                                                    />
+                                                )}
                                             </Box>
                                         </Box>
                                         <Typography variant="caption" sx={{ color: isDark ? 'rgba(255, 255, 255, 0.5)' : '#9ca3af' }}>
@@ -302,20 +305,20 @@ export default function ManageRequestsPage() {
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <Phone size={16} style={{ color: '#10b981' }} />
                                             <Typography sx={{ fontSize: '14px', color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569' }}>
-                                                {request.phone}
+                                                {request.phone || 'לא צוין'}
                                             </Typography>
                                         </Box>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <Users size={16} style={{ color: '#f59e0b' }} />
                                             <Typography sx={{ fontSize: '14px', color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569' }}>
-                                                {request.requested_group?.name}
+                                                קבוצה: {request.group_id || 'לא צוין'}
                                             </Typography>
                                         </Box>
-                                        {request.requested_group?.parent && (
+                                        {request.email && (
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 <Shield size={16} style={{ color: '#ef4444' }} />
                                                 <Typography sx={{ fontSize: '14px', color: isDark ? 'rgba(255, 255, 255, 0.8)' : '#475569' }}>
-                                                    {request.requested_group.parent.name}
+                                                    {request.email}
                                                 </Typography>
                                             </Box>
                                         )}
@@ -376,11 +379,10 @@ export default function ManageRequestsPage() {
                                             <TableRow key={request.id}>
                                                 <TableCell sx={{ color: isDark ? 'white' : '#1f2937' }}>{request.full_name}</TableCell>
                                                 <TableCell sx={{ color: isDark ? 'white' : '#1f2937' }}>
-                                                    {getRoleTypeLabel(request.requested_role_info?.type)}
+                                                    תפקיד ID: {request.role_id || 'לא צוין'}
                                                 </TableCell>
                                                 <TableCell sx={{ color: isDark ? 'white' : '#1f2937' }}>
-                                                    {request.requested_group?.name}
-                                                    {request.requested_group?.parent && ` / ${request.requested_group.parent.name}`}
+                                                    קבוצה: {request.group_id || 'לא צוין'}
                                                 </TableCell>
                                                 <TableCell>{getStatusChip(request.status)}</TableCell>
                                                 <TableCell sx={{ color: isDark ? 'rgba(255, 255, 255, 0.6)' : '#64748b' }}>

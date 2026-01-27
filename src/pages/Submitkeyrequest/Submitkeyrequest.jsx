@@ -340,38 +340,55 @@ export default function SubmitKeyRequest() {
                             </Grid>
 
                             <Grid item xs={12}>
-                                <Box sx={{ my: 2 }}>
+                                <Box sx={{ mt: 1, mb: 2 }}>
                                     <Divider sx={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#f1f5f9', mb: 3 }} />
 
                                     <Fade in={true}>
-                                        <Box sx={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: 1
-                                        }}>
-                                            <Box sx={{ display: 'center', alignItems: 'flex-end', gap: 1, color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }}>
-                                                <Typography sx={{ fontSize: '0.9rem', fontWeight: 100 }}>
-                                                    סה"כ כיתות מבוקשות
-                                                </Typography>
+                                        <Box
+                                            sx={{
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                textAlign: 'center',
+                                                gap: 1
+                                            }}
+                                        >
+                                            <Box
+                                                sx={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 1,
+                                                    color: isDark ? 'rgba(255,255,255,0.65)' : '#64748b'
+                                                }}
+                                            >
                                                 <Calculator size={18} />
-
+                                                <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                                                    סה״כ כיתות מבוקשות
+                                                </Typography>
                                             </Box>
 
-                                            <Typography variant="h2" sx={{
-                                                fontWeight: 800,
-                                                color: totalRooms > 0 ? '#10b981' : (isDark ? 'rgba(255,255,255,0.2)' : '#cbd5e1'),
-                                                fontSize: '3rem',
-                                                lineHeight: 1,
-                                                transition: 'color 0.3s'
-                                            }}>
+                                            <Typography
+                                                sx={{
+                                                    fontWeight: 800,
+                                                    fontSize: { xs: '3.2rem', sm: '3.6rem' },
+                                                    lineHeight: 1,
+                                                    letterSpacing: '-0.02em',
+                                                    color:
+                                                        totalRooms > 0
+                                                            ? '#10b981'
+                                                            : isDark
+                                                                ? 'rgba(255,255,255,0.22)'
+                                                                : '#cbd5e1',
+                                                    transition: 'color 0.3s'
+                                                }}
+                                            >
                                                 {totalRooms}
                                             </Typography>
                                         </Box>
                                     </Fade>
                                 </Box>
                             </Grid>
+
 
                             {error && (
                                 <Grid item xs={12}>
@@ -388,39 +405,48 @@ export default function SubmitKeyRequest() {
                                     </Alert>
                                 </Grid>
                             )}
-
-                            <Grid item xs={12} sx={{ display: 'center', justifyContent: 'center' }}>
-                                <Button
-                                    type="submit"
-                                    disabled={loading}
-                                    variant="contained"
-                                    sx={{
-                                        minWidth: '7px',
-                                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                        color: 'white',
-                                        py: 1.2,
-                                        px: 4,
-                                        borderRadius: '12px',
-                                        fontWeight: 100,
-                                        fontSize: '1rem',
-                                        textTransform: 'none',
-                                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                                        '&:hover': {
-                                            transform: 'translateY(-2px)',
-                                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                            boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)',
-                                        },
-                                        '&:disabled': {
-                                            background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-                                            color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-                                        }
-                                    }}
-
-                                >
-                                    {loading ? 'שולח...' : ' שלח בקשה '}
-                                    {loading ? <CircularProgress size={18} color="inherit" /> : <Send size={18} />}
-
-                                </Button>
+                            <Grid item xs={12}>
+                                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                                    <Button
+                                        type="submit"
+                                        disabled={loading}
+                                        variant="contained"
+                                        startIcon={!loading ? <Send size={18} /> : null}
+                                        sx={{
+                                            minWidth: 220,
+                                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                            color: 'white',
+                                            py: 1.35,
+                                            px: 4,
+                                            borderRadius: '14px',
+                                            fontWeight: 800,
+                                            fontSize: '1rem',
+                                            textTransform: 'none',
+                                            boxShadow: '0 10px 24px rgba(16, 185, 129, 0.25)',
+                                            gap: 1,
+                                            '& .MuiButton-startIcon': { ml: 0, mr: 1 }, // נראות טובה ב-RTL
+                                            '&:hover': {
+                                                transform: 'translateY(-2px)',
+                                                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                                boxShadow: '0 16px 32px rgba(16, 185, 129, 0.35)',
+                                            },
+                                            '&:disabled': {
+                                                background: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+                                                color: isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)',
+                                                boxShadow: 'none'
+                                            }
+                                        }}
+                                    >
+                                        {loading ? (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <CircularProgress size={18} color="inherit" />
+                                                <span>שולח...</span>
+                                            </Box>
+                                        ) : (
+                                            'שלח בקשה'
+                                        )}
+                                    </Button>
+                                </Box>
                             </Grid>
                         </Grid>
                     </form>
