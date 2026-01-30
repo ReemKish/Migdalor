@@ -21,6 +21,7 @@ import {
   Paper,
   TableContainer,
   CircularProgress,
+  Snackbar,
   Alert,
   Fade,
   Tooltip,
@@ -64,6 +65,14 @@ const KeysAllocator = () => {
     message: "",
     severity: "info",
   });
+
+  const showSnackbar = (message, severity = "info") => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
+  };
 
   // Helper function to find the user's Gdud in the hierarchy
   const findUserGdud = async (groupId) => {
@@ -232,7 +241,7 @@ const KeysAllocator = () => {
 
   const timesOverlap = (start1, end1, start2, end2) =>
     start1 < end2 && start2 < end1;
-
+  ///////////////////////
   const allocateKeys = async () => {
     setIsAllocating(true);
     const lessonsToAllocate =
@@ -278,18 +287,12 @@ const KeysAllocator = () => {
       return a.start_time.localeCompare(b.start_time);
     });
 
-    const [selectedKeys, setSelectedKeys] = useState([]);
-    const [selectedLessons, setSelectedLessons] = useState([]);
-    const [isAllocating, setIsAllocating] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [allKeys, setAllKeys] = useState([]);
-    const [lessons, setLessons] = useState([]);
-    const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [userGdudId, setUserGdudId] = useState(null);
+    const sessionAllocations = [];
+    const finalUpdates = [];
 
-    // Helper function to find the user's Gdud in the hierarchy
-    const findUserGdud = async (groupId) => {
-      let currentId = groupId;
+    for (const lesson of sortedLessons) {
+      let bestKey = null;
+      let maxScore = 0;
 
       for (const key of availableKeys) {
         const hasOverlap = lessons.some((l) => {
@@ -344,7 +347,6 @@ const KeysAllocator = () => {
           maxScore = score;
           bestKey = key;
         }
-        return groupId;
       }
 
       if (bestKey && maxScore > 0) {
@@ -355,7 +357,7 @@ const KeysAllocator = () => {
           end_time: lesson.end_time,
         });
       }
-    };
+    }
 
     for (const up of finalUpdates) {
       await supabase
@@ -1182,6 +1184,21 @@ const KeysAllocator = () => {
           </Card>
         </Grid>
       </Grid>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
